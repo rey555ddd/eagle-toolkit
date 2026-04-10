@@ -65,7 +65,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 
 // ─── Gemini API Helpers ───────────────────────────────────────────────────────
 
-const TEXT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const TEXT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-001', 'gemini-1.5-flash'];
 
 async function callGeminiText(
   env: Env,
@@ -82,7 +82,7 @@ async function callGeminiText(
     } catch (err: unknown) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('503') || msg.includes('overloaded') || msg.includes('high demand')) {
+      if (msg.includes('503') || msg.includes('404') || msg.includes('overloaded') || msg.includes('high demand') || msg.includes('no longer available')) {
         console.log(`Model ${modelName} overloaded, trying fallback...`);
         continue;
       }
