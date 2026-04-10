@@ -164,37 +164,54 @@ async function generateWithGeminiFallback(
   imageBase64: string,
   mimeType: string
 ): Promise<string> {
+  // Must use image-capable model — gemini-2.5-flash-image supports image output
+  const IMAGE_MODELS = ['gemini-2.5-flash-image', 'gemini-2.0-flash-exp'];
   const ai = getGenAIClient(env);
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [
-      {
-        role: 'user',
-        parts: [
+  let lastError: unknown;
+
+  for (const modelName of IMAGE_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [
           {
-            inlineData: {
-              data: imageBase64,
-              mimeType: mimeType as 'image/jpeg' | 'image/png',
-            },
-          },
-          {
-            text: `${prompt} Use the product shown in the image. Generate a luxury product photography composite image. Return only the image.`,
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  data: imageBase64,
+                  mimeType: mimeType as 'image/jpeg' | 'image/png',
+                },
+              },
+              {
+                text: `${prompt} Use the product shown in the image. Generate a luxury product photography composite image. Return only the image.`,
+              },
+            ],
           },
         ],
-      },
-    ],
-    config: {
-      responseModalities: ['IMAGE', 'TEXT'],
-    },
-  });
+        config: {
+          responseModalities: ['IMAGE', 'TEXT'],
+        },
+      });
 
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      return part.inlineData.data;
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return part.inlineData.data;
+        }
+      }
+      throw new Error(`Model ${modelName} did not return image data`);
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Image model ${modelName} failed]`, msg);
+      if (msg.includes('503') || msg.includes('404') || msg.includes('only supports text') || msg.includes('no longer available')) {
+        continue;
+      }
+      throw err;
     }
   }
-  throw new Error('Gemini fallback did not return image data');
+  throw lastError;
 }
 
 // ─── tRPC Routes ──────────────────────────────────────────────────────────────
