@@ -1,0 +1,7 @@
+Logo: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg
+Cover: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_cover_8d40d26c.jpeg
+Hero BG: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/hero_bg-f8gPGgUaC9gPWv74TECkzN.webp
+Card Video: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/card_video-Jp9EhT8PgRp4ReP5jDKFky.webp
+Card Copy: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/card_copywriting-KZKqzz86hXDaDGTnCwY2jZ.webp
+Card Image: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/card_image-F3ZDoZVEdbj2XA2ggRB5R2.webp
+Texture: https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/texture_noise-aruoN4YGyHR6UZxXjNCgqT.webp
