@@ -139,18 +139,29 @@ async function generateWithImagen(
   ]);
   const productDesc = visionResult.response.text().trim();
 
-  // Use Imagen 3 to generate composite image
+  // Use Imagen 4 for highest quality image generation
   const fullPrompt = `${prompt} Product: ${productDesc}. Ultra-high quality commercial photography, 8K resolution, perfect lighting, no text, no watermark, photorealistic.`;
 
-  const response = await ai.models.generateImages({
-    model: 'imagen-3.0-generate-001',
-    prompt: fullPrompt,
-    config: {
-      numberOfImages: 1,
-      aspectRatio: '1:1',
-      safetyFilterLevel: 'BLOCK_ONLY_HIGH' as never,
-    },
-  });
+  // Try Imagen 4 first (best quality), fallback to Imagen 3
+  const IMAGEN_MODELS = ['imagen-4.0-generate-001', 'imagen-3.0-generate-001'];
+  let response: Awaited<ReturnType<typeof ai.models.generateImages>> | null = null;
+  for (const imgModel of IMAGEN_MODELS) {
+    try {
+      response = await ai.models.generateImages({
+        model: imgModel,
+        prompt: fullPrompt,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: '1:1',
+          safetyFilterLevel: 'BLOCK_ONLY_HIGH' as never,
+        },
+      });
+      if (response?.generatedImages?.[0]?.image?.imageBytes) break;
+    } catch (e) {
+      console.warn(`[Imagen ${imgModel} failed]`, e instanceof Error ? e.message : e);
+      continue;
+    }
+  }
 
   const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
   if (!imageBytes) throw new Error('Imagen did not return image bytes');
