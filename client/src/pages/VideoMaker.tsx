@@ -1,7 +1,7 @@
 /*
- * è¨­è¨å²å­¸ï¼Maison Noire â æ³å¼ç²¾åæ²é¾ç¾å­¸
- * å½±ççæå¨ï¼åæ­¥é© Tab ä»é¢ï¼é¿åé é¢éé·
- * æ­¥é©ï¼ä¸å³ç§ç â é¢¨æ ¼è¨­å® â å­å¹æµ®æ°´å° â é è¦½ä¸è¼
+ * 設計哲學：Maison Noire — 法式精品沙龍美學
+ * 影片生成器：分步驟 Tab 介面，避免頁面過長
+ * 步驟：上傳照片 → 風格設定 → 字幕浮水印 → 預覽下載
  */
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
@@ -15,44 +15,44 @@ const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqs
 
 // Step definitions
 const steps = [
-  { id: 1, label: "ä¸å³ç§ç", icon: ImagePlus },
-  { id: 2, label: "é¢¨æ ¼è¨­å®", icon: Palette },
-  { id: 3, label: "å­å¹æµ®æ°´å°", icon: Type },
-  { id: 4, label: "é è¦½ä¸è¼", icon: Eye },
+  { id: 1, label: "上傳照片", icon: ImagePlus },
+  { id: 2, label: "風格設定", icon: Palette },
+  { id: 3, label: "字幕浮水印", icon: Type },
+  { id: 4, label: "預覽下載", icon: Eye },
 ];
 
 // Options
 const styleTemplates = [
-  { id: "black-gold", label: "é»éå¥¢è¯", colors: ["#0A0A0A", "#C4A265"] },
-  { id: "white-minimal", label: "ç´ç½æ¥µç°¡", colors: ["#FFFFFF", "#333333"] },
-  { id: "dark-grey", label: "æ·±ç°é«ç´", colors: ["#2A2A2A", "#B0B0B0"] },
+  { id: "black-gold", label: "黑金奢華", colors: ["#0A0A0A", "#C4A265"] },
+  { id: "white-minimal", label: "純白極簡", colors: ["#FFFFFF", "#333333"] },
+  { id: "dark-grey", label: "深灰高級", colors: ["#2A2A2A", "#B0B0B0"] },
 ];
 
 const videoSizes = [
-  { id: "9:16", label: "9:16", desc: "éå / Reels" },
-  { id: "1:1", label: "1:1", desc: "è²¼æ" },
-  { id: "4:5", label: "4:5", desc: "åæ" },
+  { id: "9:16", label: "9:16", desc: "限動 / Reels" },
+  { id: "1:1", label: "1:1", desc: "貼文" },
+  { id: "4:5", label: "4:5", desc: "動態" },
 ];
 
 const filters = [
-  { id: "original", label: "åå" },
-  { id: "warm-gold", label: "æéèª¿" },
-  { id: "cool-tone", label: "å·èª¿é«ç´" },
-  { id: "soft-light", label: "æå" },
-  { id: "high-contrast", label: "é«å°æ¯" },
-  { id: "vintage", label: "å¾©å¤åºç" },
+  { id: "original", label: "原圖" },
+  { id: "warm-gold", label: "暖金調" },
+  { id: "cool-tone", label: "冷調高級" },
+  { id: "soft-light", label: "柔光" },
+  { id: "high-contrast", label: "高對比" },
+  { id: "vintage", label: "復古底片" },
 ];
 
 const durations = [
-  { id: 5, label: "5 ç§" },
-  { id: 10, label: "10 ç§" },
-  { id: 15, label: "15 ç§" },
+  { id: 5, label: "5 秒" },
+  { id: 10, label: "10 秒" },
+  { id: 15, label: "15 秒" },
 ];
 
 const speeds = [
-  { id: "slow", label: "æ¢é", desc: "3 ç§/å¼µ" },
-  { id: "medium", label: "ä¸­é", desc: "2 ç§/å¼µ" },
-  { id: "fast", label: "å¿«é", desc: "1 ç§/å¼µ" },
+  { id: "slow", label: "慢速", desc: "3 秒/張" },
+  { id: "medium", label: "中速", desc: "2 秒/張" },
+  { id: "fast", label: "快速", desc: "1 秒/張" },
 ];
 
 const filterStyles: Record<string, string> = {
@@ -137,7 +137,7 @@ export default function VideoMaker() {
       setTimeout(() => {
         setGenerating(false);
         setPreviewReady(true);
-        toast.success("å½±ççæå®æï¼");
+        toast.success("影片生成完成！");
       }, 500);
     }, 3000);
   };
@@ -196,7 +196,7 @@ export default function VideoMaker() {
           ctx.fillStyle = "#FFFFFF";
           ctx.font = `${Math.round(w * 0.025)}px 'Noto Sans TC', sans-serif`;
           ctx.textAlign = "right";
-          ctx.fillText("ä¼æåå¤ç²¾åä»£è³¼", w - 30, 50);
+          ctx.fillText("伊果國外精品代購", w - 30, 50);
           ctx.globalAlpha = 1;
         }
 
@@ -208,7 +208,7 @@ export default function VideoMaker() {
             a.download = `eagle_video_${Date.now()}.png`;
             a.click();
             URL.revokeObjectURL(url);
-            toast.success("å·²ä¸è¼é è¦½å¹ï¼");
+            toast.success("已下載預覽幀！");
           }
         }, "image/png");
       };
@@ -243,12 +243,12 @@ export default function VideoMaker() {
           <div className="flex items-center justify-center gap-3 mb-4">
             <Film size={20} className="text-[oklch(0.72_0.08_75)]" />
             <h1 className="font-serif text-2xl sm:text-3xl tracking-[0.12em] text-[oklch(0.92_0.01_80)]">
-              å½±ççæå¨
+              影片生成器
             </h1>
           </div>
           <div className="gold-divider max-w-[80px] mx-auto mb-4" />
           <p className="text-[oklch(0.55_0.02_60)] text-sm tracking-[0.05em]">
-            ä¸å³ååç§çï¼çæç²¾åè³ªæçç¤¾ç¾¤å½±ç
+            上傳商品照片，生成精品質感的社群影片
           </p>
         </div>
 
@@ -300,10 +300,10 @@ export default function VideoMaker() {
                 >
                   <Upload size={32} className="mx-auto mb-4 text-[oklch(0.72_0.08_75/60%)] group-hover:text-[oklch(0.72_0.08_75)] transition-colors" />
                   <p className="text-[oklch(0.7_0.01_80)] text-sm mb-2 tracking-[0.05em]">
-                    é»ææææ³ä¸å³ååç§ç
+                    點擊或拖曳上傳商品照片
                   </p>
                   <p className="text-[oklch(0.4_0.02_60)] text-xs tracking-[0.03em]">
-                    æ¯æ´ JPGãPNG æ ¼å¼ï¼å¯ä¸å³å¤å¼µ
+                    支援 JPG、PNG 格式，可上傳多張
                   </p>
                   <input
                     ref={fileInputRef}
@@ -318,7 +318,7 @@ export default function VideoMaker() {
                 {images.length > 0 && (
                   <div className="mt-8">
                     <p className="text-[oklch(0.6_0.02_60)] text-xs mb-4 tracking-[0.1em]">
-                      å·²ä¸å³ {images.length} å¼µç§ç
+                      已上傳 {images.length} 張照片
                     </p>
                     <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
                       {images.map((img, i) => (
@@ -353,11 +353,11 @@ export default function VideoMaker() {
                 {/* Style Template */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">é¢¨æ ¼æ¨¡æ¿</h3>
+                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">風格模板</h3>
                     <Tooltip>
                       <TooltipTrigger><Info size={13} className="text-[oklch(0.4_0.02_60)]" /></TooltipTrigger>
                       <TooltipContent className="bg-[oklch(0.18_0.005_60)] border-[oklch(0.72_0.08_75/20%)] text-[oklch(0.82_0.01_80)]">
-                        <p className="text-xs">é¸æå½±ççæ´é«è²èª¿é¢¨æ ¼</p>
+                        <p className="text-xs">選擇影片的整體色調風格</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -386,11 +386,11 @@ export default function VideoMaker() {
                 {/* Video Size */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">è¦é »å°ºå¯¸</h3>
+                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">視頻尺寸</h3>
                     <Tooltip>
                       <TooltipTrigger><Info size={13} className="text-[oklch(0.4_0.02_60)]" /></TooltipTrigger>
                       <TooltipContent className="bg-[oklch(0.18_0.005_60)] border-[oklch(0.72_0.08_75/20%)] text-[oklch(0.82_0.01_80)]">
-                        <p className="text-xs">é¸æé©åç¼ä½å¹³å°çå°ºå¯¸</p>
+                        <p className="text-xs">選擇適合發佈平台的尺寸</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -414,7 +414,7 @@ export default function VideoMaker() {
 
                 {/* Filter */}
                 <div>
-                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">æ¿¾é¡ææ</h3>
+                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">濾鏡效果</h3>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                     {filters.map((f) => (
                       <button
@@ -450,7 +450,7 @@ export default function VideoMaker() {
                     <Tooltip>
                       <TooltipTrigger><Info size={13} className="text-[oklch(0.4_0.02_60)]" /></TooltipTrigger>
                       <TooltipContent className="bg-[oklch(0.18_0.005_60)] border-[oklch(0.72_0.08_75/20%)] text-[oklch(0.82_0.01_80)]">
-                        <p className="text-xs">開啟後保留商品原始色彩，僅套用背景與邊框風格，適合對色號敏感的精品（如 Hermès）</p>
+                        <p className="text-xs">開啟後保留商品原始色彩，僅套用背景與邊框風格，適合對色號敏感的精品（如 Herm�s）</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -472,7 +472,7 @@ export default function VideoMaker() {
                         保留商品原色（不套用濾鏡）
                       </span>
                       <span className="text-[10px] text-[oklch(0.45_0.02_60)]">
-                        推薦用於 Hermès、Chanel 等色號敏感商品
+                        推薦用於 Herm�s、Chanel 等色號敏感商品
                       </span>
                     </div>
                   </button>
@@ -486,7 +486,7 @@ export default function VideoMaker() {
                 {/* Duration & Speed */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                   <div>
-                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">è¦é »é·åº¦</h3>
+                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">視頻長度</h3>
                     <div className="flex gap-3">
                       {durations.map((d) => (
                         <button
@@ -504,7 +504,7 @@ export default function VideoMaker() {
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">åæéåº¦</h3>
+                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">切換速度</h3>
                     <div className="flex gap-3">
                       {speeds.map((s) => (
                         <button
@@ -531,32 +531,32 @@ export default function VideoMaker() {
               <div className="max-w-3xl mx-auto space-y-8">
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">å­å¹è¨­ç½®</h3>
+                    <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)]">字幕設置</h3>
                     <Tooltip>
                       <TooltipTrigger><Info size={13} className="text-[oklch(0.4_0.02_60)]" /></TooltipTrigger>
                       <TooltipContent className="bg-[oklch(0.18_0.005_60)] border-[oklch(0.72_0.08_75/20%)] text-[oklch(0.82_0.01_80)]">
-                        <p className="text-xs">èªè¨å©è¡å­å¹ï¼å°é¡¯ç¤ºå¨å½±çåºé¨</p>
+                        <p className="text-xs">自訂兩行字幕，將顯示在影片底部</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs text-[oklch(0.5_0.02_60)] mb-2 tracking-[0.08em]">ç¬¬ä¸è¡ï¼ä¸»æ¨é¡ï¼</label>
+                      <label className="block text-xs text-[oklch(0.5_0.02_60)] mb-2 tracking-[0.08em]">第一行（主標題）</label>
                       <input
                         type="text"
                         value={line1}
                         onChange={(e) => setLine1(e.target.value)}
-                        placeholder="ä¾ï¼å¨æ° Chanel Classic Flap"
+                        placeholder="例：全新 Chanel Classic Flap"
                         className="w-full bg-[oklch(0.14_0.005_60)] border border-[oklch(0.25_0.01_65/50%)] rounded-sm px-4 py-3 text-sm text-[oklch(0.92_0.01_80)] placeholder:text-[oklch(0.35_0.02_60)] focus:border-[oklch(0.72_0.08_75/50%)] focus:outline-none transition-colors tracking-[0.03em]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-[oklch(0.5_0.02_60)] mb-2 tracking-[0.08em]">ç¬¬äºè¡ï¼å¯æ¨é¡ï¼</label>
+                      <label className="block text-xs text-[oklch(0.5_0.02_60)] mb-2 tracking-[0.08em]">第二行（副標題）</label>
                       <input
                         type="text"
                         value={line2}
                         onChange={(e) => setLine2(e.target.value)}
-                        placeholder="ä¾ï¼ééæ¬¾ Â· éå¨å¥éä»¶"
+                        placeholder="例：限量款 · 附全套配件"
                         className="w-full bg-[oklch(0.14_0.005_60)] border border-[oklch(0.25_0.01_65/50%)] rounded-sm px-4 py-3 text-sm text-[oklch(0.92_0.01_80)] placeholder:text-[oklch(0.35_0.02_60)] focus:border-[oklch(0.72_0.08_75/50%)] focus:outline-none transition-colors tracking-[0.03em]"
                       />
                     </div>
@@ -565,7 +565,7 @@ export default function VideoMaker() {
 
                 {/* Watermark Toggle */}
                 <div>
-                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">æµ®æ°´å°</h3>
+                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">浮水印</h3>
                   <button
                     onClick={() => setWatermark(!watermark)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-sm border transition-all duration-300 ${
@@ -580,14 +580,14 @@ export default function VideoMaker() {
                       {watermark && <Check size={10} className="text-[oklch(0.1_0.005_60)]" />}
                     </div>
                     <span className="text-xs text-[oklch(0.7_0.01_80)] tracking-[0.05em]">
-                      èªåæ·»å ãä¼æåå¤ç²¾åä»£è³¼ãæµ®æ°´å°
+                      自動添加「伊果國外精品代購」浮水印
                     </span>
                   </button>
                 </div>
 
                 {/* Subtitle Preview */}
                 <div>
-                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">å­å¹é è¦½</h3>
+                  <h3 className="text-sm tracking-[0.1em] text-[oklch(0.82_0.01_80)] mb-4">字幕預覽</h3>
                   <div
                     className="rounded-sm overflow-hidden relative"
                     style={{ background: getStyleBg() }}
@@ -617,7 +617,7 @@ export default function VideoMaker() {
                       )}
                       {watermark && (
                         <div className="absolute top-3 right-3 text-white/30 text-[10px] tracking-[0.05em]">
-                          ä¼æåå¤ç²¾åä»£è³¼
+                          伊果國外精品代購
                         </div>
                       )}
                     </div>
@@ -676,7 +676,7 @@ export default function VideoMaker() {
 
                         {watermark && (
                           <div className="absolute top-3 right-3 text-white/30 text-[10px] tracking-[0.05em] z-10">
-                            ä¼æåå¤ç²¾åä»£è³¼
+                            伊果國外精品代購
                           </div>
                         )}
 
@@ -691,31 +691,31 @@ export default function VideoMaker() {
                   {/* Settings Summary & Actions */}
                   <div className="lg:col-span-2 space-y-6">
                     <div className="luxury-card rounded-sm p-6">
-                      <h3 className="text-sm tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-4 font-serif">è¨­å®æè¦</h3>
+                      <h3 className="text-sm tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-4 font-serif">設定摘要</h3>
                       <div className="space-y-3 text-xs">
                         <div className="flex justify-between">
-                          <span className="text-[oklch(0.5_0.02_60)]">ç§çæ¸é</span>
-                          <span className="text-[oklch(0.82_0.01_80)]">{images.length} å¼µ</span>
+                          <span className="text-[oklch(0.5_0.02_60)]">照片數量</span>
+                          <span className="text-[oklch(0.82_0.01_80)]">{images.length} 張</span>
                         </div>
                         <div className="gold-divider" />
                         <div className="flex justify-between">
-                          <span className="text-[oklch(0.5_0.02_60)]">é¢¨æ ¼æ¨¡æ¿</span>
+                          <span className="text-[oklch(0.5_0.02_60)]">風格模板</span>
                           <span className="text-[oklch(0.82_0.01_80)]">{styleTemplates.find(s => s.id === style)?.label}</span>
                         </div>
                         <div className="gold-divider" />
                         <div className="flex justify-between">
-                          <span className="text-[oklch(0.5_0.02_60)]">è¦é »å°ºå¯¸</span>
+                          <span className="text-[oklch(0.5_0.02_60)]">視頻尺寸</span>
                           <span className="text-[oklch(0.82_0.01_80)]">{size} ({videoSizes.find(s => s.id === size)?.desc})</span>
                         </div>
                         <div className="gold-divider" />
                         <div className="flex justify-between">
-                          <span className="text-[oklch(0.5_0.02_60)]">æ¿¾é¡</span>
+                          <span className="text-[oklch(0.5_0.02_60)]">濾鏡</span>
                           <span className="text-[oklch(0.82_0.01_80)]">{filters.find(f => f.id === filter)?.label}</span>
                         </div>
                         <div className="gold-divider" />
                         <div className="flex justify-between">
-                          <span className="text-[oklch(0.5_0.02_60)]">é·åº¦ / éåº¦</span>
-                          <span className="text-[oklch(0.82_0.01_80)]">{duration}ç§ / {speeds.find(s => s.id === speed)?.label}</span>
+                          <span className="text-[oklch(0.5_0.02_60)]">長度 / 速度</span>
+                          <span className="text-[oklch(0.82_0.01_80)]">{duration}秒 / {speeds.find(s => s.id === speed)?.label}</span>
                         </div>
                       </div>
                     </div>
@@ -727,7 +727,7 @@ export default function VideoMaker() {
                         className="w-full btn-luxury-filled py-4 rounded-sm text-sm tracking-[0.1em] flex items-center justify-center gap-2"
                       >
                         <Play size={16} />
-                        çæå½±ç
+                        生成影片
                       </button>
                     )}
 
@@ -736,7 +736,7 @@ export default function VideoMaker() {
                       <div className="luxury-card rounded-sm p-6">
                         <div className="flex items-center gap-3 mb-3">
                           <Loader2 size={16} className="animate-spin text-[oklch(0.72_0.08_75)]" />
-                          <span className="text-xs text-[oklch(0.72_0.08_75)] tracking-[0.1em]">çæä¸­...</span>
+                          <span className="text-xs text-[oklch(0.72_0.08_75)] tracking-[0.1em]">生成中...</span>
                         </div>
                         <div className="w-full h-1 bg-[oklch(0.2_0.005_60)] rounded-full overflow-hidden">
                           <div
@@ -745,7 +745,7 @@ export default function VideoMaker() {
                           />
                         </div>
                         <p className="text-[10px] text-[oklch(0.45_0.02_60)] mt-2 tracking-[0.05em]">
-                          {progress < 30 ? "æ­£å¨èçç§ç..." : progress < 60 ? "å¥ç¨æ¿¾é¡èé¢¨æ ¼..." : progress < 90 ? "çæè½å ´ææ..." : "å³å°å®æ..."}
+                          {progress < 30 ? "正在處理照片..." : progress < 60 ? "套用濾鏡與風格..." : progress < 90 ? "生成轉場效果..." : "即將完成..."}
                         </p>
                       </div>
                     )}
@@ -758,13 +758,13 @@ export default function VideoMaker() {
                           className="w-full btn-luxury-filled py-4 rounded-sm text-sm tracking-[0.1em] flex items-center justify-center gap-2"
                         >
                           <Download size={16} />
-                          ä¸è¼å½±çé è¦½å¹
+                          下載影片預覽幀
                         </button>
                         <button
                           onClick={() => { setPreviewReady(false); setGenerating(false); setProgress(0); }}
                           className="w-full btn-luxury py-3 rounded-sm text-xs tracking-[0.1em]"
                         >
-                          éæ°çæ
+                          重新生成
                         </button>
                       </div>
                     )}
@@ -786,17 +786,17 @@ export default function VideoMaker() {
             }`}
           >
             <ChevronLeft size={14} />
-            ä¸ä¸æ­¥
+            上一步
           </button>
           {currentStep < 4 && (
             <button
               onClick={() => {
                 if (canProceed()) setCurrentStep((prev) => Math.min(4, prev + 1));
-                else toast.error("è«åä¸å³è³å°ä¸å¼µç§ç");
+                else toast.error("請先上傳至少一張照片");
               }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-sm text-xs tracking-[0.1em] btn-luxury-filled"
             >
-              ä¸ä¸æ­¥
+              下一步
               <ChevronRight size={14} />
             </button>
           )}
