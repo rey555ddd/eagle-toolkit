@@ -419,6 +419,7 @@ ${input.originalText}
             'rose-petal',
             'crystal-light',
           ]),
+          colorLock: z.boolean().default(false),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -445,7 +446,11 @@ ${input.originalText}
             'luxury product photography with crystal prism light effects, rainbow light refraction, jewelry photography style, magical luxury,',
         };
 
-        const prompt = bgPrompts[input.backgroundStyle];
+        const basePrompt = bgPrompts[input.backgroundStyle];
+        const colorLockInstruction = input.colorLock
+          ? ' CRITICAL: Preserve the EXACT original colors of the product. Do NOT alter, tint, shift, or change any colors of the product whatsoever. The product must appear with identical colors to the original photo. Only change the background, never the product colors.'
+          : '';
+        const prompt = basePrompt + colorLockInstruction;
 
         let resultBase64: string;
         let usedFallback = false;
