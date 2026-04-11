@@ -118,12 +118,16 @@ export default function ImageEditor() {
 
   const applyBgMutation = trpc.imageProcessor.applyLuxuryBackground.useMutation({
     onSuccess: (data) => {
-      setResultUrl(data.url ?? null);
+      if (data.imageBase64) {
+        setResultUrl(`data:image/jpeg;base64,${data.imageBase64}`);
+      } else {
+        setResultUrl(null);
+      }
       setStep(2);
       if (data.usedFallback) {
         toast.success("圖片已生成！（使用備用 AI 方案）");
       } else {
-        toast.success("✨ Imagen 3 AI 圖片已生成！");
+        toast.success("✨ Imagen 4 AI 圖片已生成！");
       }
     },
     onError: (err) => {
