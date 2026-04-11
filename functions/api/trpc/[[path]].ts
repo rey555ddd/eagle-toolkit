@@ -448,25 +448,17 @@ ${input.originalText}
 
         const basePrompt = bgPrompts[input.backgroundStyle];
         const colorLockInstruction = input.colorLock
-          ? ' CRITICAL: Preserve the EXACT original colors of the product. Do NOT alter, tint, shift, or change any colors of the product whatsoever. The product must appear with identical colors to the original photo. Only change the background, never the product colors.'
+          ? ' CRITICAL IMAGE EDITING INSTRUCTION: Keep the product EXACTLY as shown in the original photo. Preserve the EXACT same colors, patterns, details, shape, and textures. Do NOT alter, tint, recolor, or regenerate the product in any way. ONLY replace the background. The product must remain pixel-perfect identical to the input image.'
           : '';
         const prompt = basePrompt + colorLockInstruction;
 
         let resultBase64: string;
         let usedFallback = false;
 
-        try {
-          // Try primary method: Imagen 3
-          resultBase64 = await generateWithImagen(
-            ctx.env,
-            prompt,
-            input.imageBase64,
-            input.mimeType
-          );
-        } catch (imagenError) {
-          console.warn('[Imagen 3 failed, trying Gemini fallback]', imagenError);
+        if (input.colorLock) {
+          // Color Lock ON: MUST use Gemini which receives the actual image.
+          // Imagen only generates from text prompt and cannot preserve original colors.
           try {
-            // Fallback: Gemini 2.5 Flash image generation
             resultBase64 = await generateWithGeminiFallback(
               ctx.env,
               prompt,
@@ -475,14 +467,40 @@ ${input.originalText}
             );
             usedFallback = true;
           } catch (fallbackError) {
-            console.error('[Gemini fallback also failed]', fallbackError);
+            console.error('[Gemini Color Lock generation failed]', fallbackError);
             throw new Error(
-              `AI image generation failed. Please try again later. Error: ${
-                fallbackError instanceof Error
-                  ? fallbackError.message
-                  : String(fallbackError)
+              `Color Lock generation failed. Please try again. Error: ${
+                fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
               }`
             );
+          }
+        } else {
+          try {
+            // Primary method: Imagen (best quality for non-color-lock)
+            resultBase64 = await generateWithImagen(
+              ctx.env,
+              prompt,
+              input.imageBase64,
+              input.mimeType
+            );
+          } catch (imagenError) {
+            console.warn('[Imagen failed, trying Gemini fallback]', imagenError);
+            try {
+              resultBase64 = await generateWithGeminiFallback(
+                ctx.env,
+                prompt,
+                input.imageBase64,
+                input.mimeType
+              );
+              usedFallback = true;
+            } catch (fallbackError) {
+              console.error('[Gemini fallback also failed]', fallbackError);
+              throw new Error(
+                `AI image generation failed. Please try again later. Error: ${
+                  fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+                }`
+              );
+            }
           }
         }
 
