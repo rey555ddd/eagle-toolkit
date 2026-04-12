@@ -672,12 +672,7 @@ AI 需要人為補足的：
 
 // Helper: Append marketing methodology to system prompts
 const withMarketing = (prompt: string) => {
-  return prompt + "
-
-═══ 品牌行銷方法論參考 ═══
-請在撰寫文案時參考以下行銷方法論框架，運用其中的模型和技法提升文案品質：
-
-" + MARKETING_METHODOLOGY;
+  return prompt + "\n\n═══ 品牌行銷方法論參考 ═══\n請在撰寫文案時參考以下行銷方法論框架，運用其中的模型和技法提升文案品質：\n\n" + MARKETING_METHODOLOGY;
 };
 
 
