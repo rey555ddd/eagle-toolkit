@@ -206,10 +206,6 @@ export default function Home() {
               代購服務遍及四大洲親自採買<br />
               售後服務皆有保固保修
             </p>
-            <div className="gold-divider max-w-[60px] mx-auto mt-8 mb-4" />
-            <p className="text-[oklch(0.35_0.02_60)] text-xs tracking-[0.15em]">
-              每週三、五 晚上十點開播
-            </p>
           </div>
         </div>
       </section>
