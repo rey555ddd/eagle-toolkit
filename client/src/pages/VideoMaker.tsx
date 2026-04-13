@@ -80,6 +80,7 @@ export default function VideoMaker() {
   const [progress, setProgress] = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -118,28 +119,146 @@ export default function VideoMaker() {
   }, [currentStep, images.length, speed]);
 
   const handleGenerate = async () => {
+    if (images.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     setGenerating(true);
     setProgress(0);
-    // Simulate generation progress
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 300);
+    setPreviewReady(false);
+    setVideoBlob(null);
 
-    setTimeout(() => {
-      clearInterval(interval);
-      setProgress(100);
-      setTimeout(() => {
-        setGenerating(false);
-        setPreviewReady(true);
-        toast.success("影片生成完成！");
-      }, 500);
-    }, 3000);
+    const sizeMap: Record<string, [number, number]> = {
+      "9:16": [1080, 1920],
+      "1:1": [1080, 1080],
+      "4:5": [1080, 1350],
+    };
+    const [w, h] = sizeMap[size] ?? [1080, 1920];
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d")!;
+    const bgColor = getStyleBg();
+    const accentColor = getStyleAccent();
+    const msPerImage = speed === "slow" ? 3000 : speed === "medium" ? 2000 : 1000;
+    const totalDuration = duration * 1000;
+    const FADE_MS = 220;
+
+    // Load all images onto HTMLImageElement
+    const loadedImgs = await Promise.all(
+      images.map(
+        ({ url }) =>
+          new Promise<HTMLImageElement>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.src = url;
+          })
+      )
+    );
+
+    // Pick best supported mimeType
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : MediaRecorder.isTypeSupported("video/webm")
+      ? "video/webm"
+      : "video/mp4";
+
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
+      setVideoBlob(blob);
+      setGenerating(false);
+      setPreviewReady(true);
+      toast.success("影片生成完成！");
+    };
+
+    // Draw a single image with cover fit and optional filter
+    const drawImg = (imgEl: HTMLImageElement, alpha: number) => {
+      const scale = Math.max(w / imgEl.width, h / imgEl.height);
+      const sw = imgEl.width * scale;
+      const sh = imgEl.height * scale;
+      ctx.save();
+      if (!colorLock && filter !== "original") ctx.filter = filterStyles[filter];
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(imgEl, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      ctx.restore();
+    };
+
+    // Draw text + watermark overlay on top
+    const drawOverlay = () => {
+      if (line1 || line2) {
+        const grad = ctx.createLinearGradient(0, 0, 0, h * 0.45);
+        grad.addColorStop(0, "rgba(0,0,0,0.72)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+        if (line1) {
+          ctx.fillStyle = accentColor;
+          ctx.font = `bold ${Math.round(w * 0.042)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText(line1, w / 2, line2 ? Math.round(h * 0.26) : Math.round(h * 0.28));
+        }
+        if (line2) {
+          ctx.fillStyle = "rgba(255,255,255,0.80)";
+          ctx.font = `${Math.round(w * 0.030)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText(line2, w / 2, Math.round(h * 0.32));
+        }
+      }
+      if (watermark) {
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = "#fff";
+        ctx.font = `${Math.round(w * 0.020)}px sans-serif`;
+        ctx.textAlign = "right";
+        ctx.fillText("伊果國外精品代購", w - Math.round(w * 0.025), Math.round(h * 0.030));
+        ctx.restore();
+      }
+    };
+
+    recorder.start(100); // flush every 100 ms
+    const startTime = performance.now();
+
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+
+      if (elapsed >= totalDuration) {
+        const lastIdx = Math.min(Math.floor((totalDuration - 1) / msPerImage), loadedImgs.length - 1);
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, w, h);
+        drawImg(loadedImgs[lastIdx], 1);
+        drawOverlay();
+        setProgress(100);
+        recorder.stop();
+        return;
+      }
+
+      const rawIdx = Math.floor(elapsed / msPerImage);
+      const curIdx = rawIdx % loadedImgs.length;
+      const timeInSlot = elapsed - rawIdx * msPerImage;
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, w, h);
+
+      if (timeInSlot < FADE_MS && rawIdx > 0) {
+        // Cross-fade: prev fades out, cur fades in
+        const t = timeInSlot / FADE_MS;
+        const prevIdx = (rawIdx - 1) % loadedImgs.length;
+        drawImg(loadedImgs[prevIdx], 1 - t);
+        drawImg(loadedImgs[curIdx], t);
+      } else {
+        drawImg(loadedImgs[curIdx], 1);
+      }
+
+      drawOverlay();
+      setProgress(Math.min(99, (elapsed / totalDuration) * 100));
+      requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
   };
 
   const handleDownload = () => {
@@ -176,17 +295,20 @@ export default function VideoMaker() {
           ctx.fillRect(0, 0, w, h);
         }
 
-        // Draw subtitle
+        // Draw subtitle (upper third, centered — avoid IG/FB bottom UI overlap)
         if (line1 || line2) {
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          ctx.fillRect(0, h - 200, w, 200);
+          const grad = ctx.createLinearGradient(0, 0, 0, h * 0.45);
+          grad.addColorStop(0, "rgba(0,0,0,0.5)");
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
           ctx.fillStyle = styleColors?.colors[1] || "#C4A265";
           ctx.font = `bold ${Math.round(w * 0.04)}px 'Noto Serif TC', serif`;
           ctx.textAlign = "center";
-          if (line1) ctx.fillText(line1, w / 2, h - 130);
+          if (line1) ctx.fillText(line1, w / 2, line2 ? Math.round(h * 0.26) : Math.round(h * 0.28));
           if (line2) {
             ctx.font = `${Math.round(w * 0.03)}px 'Noto Sans TC', sans-serif`;
-            ctx.fillText(line2, w / 2, h - 80);
+            ctx.fillText(line2, w / 2, Math.round(h * 0.32));
           }
         }
 
@@ -602,7 +724,7 @@ export default function VideoMaker() {
                         />
                       )}
                       {(line1 || line2) && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 sm:p-6">
+                        <div className="absolute top-[22%] left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 sm:p-6 text-center">
                           {line1 && (
                             <p className="font-serif text-sm sm:text-base tracking-[0.1em] mb-1" style={{ color: getStyleAccent() }}>
                               {line1}
@@ -660,7 +782,7 @@ export default function VideoMaker() {
                         )}
 
                         {(line1 || line2) && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 sm:p-6 z-10">
+                          <div className="absolute top-[22%] left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 sm:p-6 z-10 text-center">
                             {line1 && (
                               <p className="font-serif text-sm sm:text-base tracking-[0.1em] mb-1" style={{ color: getStyleAccent() }}>
                                 {line1}
