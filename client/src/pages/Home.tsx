@@ -68,7 +68,7 @@ export default function Home() {
             className="font-serif text-3xl sm:text-4xl lg:text-5xl tracking-[0.15em] mb-6 gold-gradient-text animate-fade-in-up"
             style={{ animationDelay: "0.4s", animationFillMode: "both" }}
           >
-            精品智能助手
+            伊果智能助手
           </h1>
           <div
             className="gold-divider max-w-[120px] mx-auto mb-6 animate-fade-in"
@@ -96,18 +96,8 @@ export default function Home() {
       </section>
 
       {/* Tools Section */}
-      <section className="py-16 sm:py-24 lg:py-32">
+      <section className="pt-4 pb-16 sm:pt-6 sm:pb-24 lg:pb-32">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16 sm:mb-20 animate-fade-in-up">
-            <h2 className="font-serif text-2xl sm:text-3xl tracking-[0.12em] text-[oklch(0.92_0.01_80)] mb-4">
-              專業工具
-            </h2>
-            <div className="gold-divider max-w-[80px] mx-auto mb-4" />
-            <p className="text-[oklch(0.55_0.02_60)] text-sm tracking-[0.05em]">
-              三大核心工具，提升您的精品展示品質
-            </p>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
             {tools.map((tool, index) => (
               <div
