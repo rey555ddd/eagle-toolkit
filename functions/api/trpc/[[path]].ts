@@ -680,6 +680,7 @@ const withMarketing = (prompt: string) => {
 
 interface Env {
   GEMINI_API_KEY: string;
+  DB?: D1Database;
 }
 
 interface Context {
@@ -1181,7 +1182,7 @@ ${input.originalText}
       }),
   }),
 
-  // ─── Feedback (Database-dependent - Mock responses) ──────────────────────────
+  // ─── Feedback (Cloudflare D1) ────────────────────────────────────────────────
   feedback: router({
     submit: publicProcedure
       .input(
@@ -1191,23 +1192,46 @@ ${input.originalText}
           content: z.string().min(5).max(2000),
         })
       )
-      .mutation(async () => {
-        throw new Error(
-          'Feedback feature requires database connection. Not available on Cloudflare Pages.'
-        );
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.env.DB) throw new Error('D1 database binding (DB) 未設定');
+        await ctx.env.DB.prepare(
+          'INSERT INTO feedbacks (nickname, category, content, status, created_at) VALUES (?, ?, ?, ?, ?)'
+        )
+          .bind(input.nickname, input.category, input.content, 'pending', Date.now())
+          .run();
+        return { success: true };
       }),
 
-    list: publicProcedure.query(async () => {
-      // Return empty list (database not available on CF Pages)
-      return [];
+    list: publicProcedure.query(async ({ ctx }) => {
+      if (!ctx.env.DB) return [];
+      const { results } = await ctx.env.DB.prepare(
+        'SELECT id, nickname, category, content, status, admin_reply AS adminReply, created_at AS createdAt FROM feedbacks ORDER BY created_at DESC LIMIT 100'
+      ).all<{
+        id: number;
+        nickname: string;
+        category: string;
+        content: string;
+        status: string;
+        adminReply: string | null;
+        createdAt: number;
+      }>();
+      return results.map((r) => ({ ...r, createdAt: new Date(r.createdAt) }));
     }),
 
     delete: publicProcedure
       .input(z.object({ id: z.number(), nickname: z.string() }))
-      .mutation(async () => {
-        throw new Error(
-          'Feedback deletion requires database connection. Not available on Cloudflare Pages.'
-        );
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.env.DB) throw new Error('D1 database binding (DB) 未設定');
+        const existing = await ctx.env.DB.prepare(
+          'SELECT nickname FROM feedbacks WHERE id = ?'
+        )
+          .bind(input.id)
+          .first<{ nickname: string }>();
+        if (!existing || existing.nickname !== input.nickname) {
+          throw new Error('無法刪除此建議');
+        }
+        await ctx.env.DB.prepare('DELETE FROM feedbacks WHERE id = ?').bind(input.id).run();
+        return { success: true };
       }),
   }),
 });
