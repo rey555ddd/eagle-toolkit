@@ -163,7 +163,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </a>
               <span className="text-[oklch(0.3_0.01_60)]">|</span>
               <span className="text-[oklch(0.4_0.02_60)] text-xs tracking-[0.05em]">
-                精品工具套件
+                精品智能助手
               </span>
             </div>
           </div>

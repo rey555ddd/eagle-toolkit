@@ -68,7 +68,7 @@ export default function Home() {
             className="font-serif text-3xl sm:text-4xl lg:text-5xl tracking-[0.15em] mb-6 gold-gradient-text animate-fade-in-up"
             style={{ animationDelay: "0.4s", animationFillMode: "both" }}
           >
-            精品工具套件
+            精品智能助手
           </h1>
           <div
             className="gold-divider max-w-[120px] mx-auto mb-6 animate-fade-in"
@@ -78,8 +78,8 @@ export default function Home() {
             className="text-[oklch(0.7_0.01_80)] text-sm sm:text-base font-light tracking-[0.05em] leading-relaxed max-w-lg mx-auto animate-fade-in-up"
             style={{ animationDelay: "0.6s", animationFillMode: "both" }}
           >
-            為精品代購量身打造的專業工具，<br className="sm:hidden" />
-            讓每一件商品都以最優雅的姿態呈現
+            為伊果精品量身打造的圖片影像處理工具，<br className="sm:hidden" />
+            搭配文案生成器，讓行銷更容易，素材質感大提升
           </p>
         </div>
 
