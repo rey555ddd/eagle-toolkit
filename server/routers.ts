@@ -1,10 +1,8 @@
 import { COOKIE_NAME } from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { nanoid } from "nanoid";
 import { getDb } from "./db";
 import { feedbacks } from "../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
@@ -67,7 +65,8 @@ async function generateWithImagen(
   return imageBytes; // base64
 }
 
-// ─── Gemini 2.5 Flash 圖片生成（Fallback 方案）────────────────────────────────
+// ─── Gemini 2.0 Flash Exp 圖片生成（Fallback 方案）───────────────────────────
+// gemini-2.0-flash-exp 是目前唯一支援 responseModalities IMAGE 輸出的 Gemini 模型
 async function generateWithGeminiFallback(
   prompt: string,
   imageBase64: string,
@@ -75,7 +74,7 @@ async function generateWithGeminiFallback(
 ): Promise<string> {
   const ai = getGenAIClient();
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash-exp",
     contents: [
       {
         role: "user",
@@ -302,13 +301,8 @@ ${input.originalText}
           }
         }
 
-        // 將結果圖片儲存到 S3
-        const resultBuffer = Buffer.from(resultBase64, "base64");
-        const resultKey = `bg-result/imagen-${nanoid()}.jpg`;
-        const { url: resultUrl } = await storagePut(resultKey, resultBuffer, "image/jpeg");
-
         return {
-          url: resultUrl,
+          imageBase64: resultBase64,
           backgroundStyle: input.backgroundStyle,
           usedFallback,
           message: usedFallback ? "AI 圖片已生成（使用備用方案）" : "Imagen 3 AI 圖片已生成",
@@ -328,14 +322,25 @@ ${input.originalText}
       )
       .mutation(async ({ input }) => {
         const db = await getDb();
-        if (!db) throw new Error("資料庫連線失敗");
-        await db.insert(feedbacks).values({
-          nickname: input.nickname,
-          category: input.category,
-          content: input.content,
-          status: "pending",
-        });
-        return { success: true };
+        if (!db) {
+          const reason = !process.env.DATABASE_URL
+            ? "未設定 DATABASE_URL"
+            : "連線初始化失敗（請檢查 server log）";
+          throw new Error(`資料庫連線失敗：${reason}`);
+        }
+        try {
+          await db.insert(feedbacks).values({
+            nickname: input.nickname,
+            category: input.category,
+            content: input.content,
+            status: "pending",
+          });
+          return { success: true };
+        } catch (err) {
+          console.error("[feedback.submit] insert failed:", err);
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`送出失敗：${msg}`);
+        }
       }),
 
     list: publicProcedure.query(async () => {
