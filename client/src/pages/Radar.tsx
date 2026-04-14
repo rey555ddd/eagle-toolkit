@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Radar as RadarIcon, Lock, RefreshCw, ExternalLink, Copy, Check, X, Sparkles, LogOut, Activity } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -110,13 +110,6 @@ function RadarDashboard({ token, operatorName, onLogout }: { token: string; oper
   const stats = data?.stats ?? { total: 0, pending: 0, handled: 0, skipped: 0 };
   const posts = data?.posts ?? [];
 
-  useEffect(() => {
-    // auto-scan once if no data
-    if (stats.total === 0 && !scanMut.isPending && !isLoading) {
-      // don't auto-trigger, wait user click
-    }
-  }, [stats.total, scanMut.isPending, isLoading]);
-
   return (
     <div className="min-h-screen pt-20 pb-16" style={{ background: "oklch(0.08 0.01 260)" }}>
       <div className="container mx-auto px-4 lg:px-8 max-w-6xl">
@@ -188,8 +181,6 @@ function RadarDashboard({ token, operatorName, onLogout }: { token: string; oper
               <RadarCard
                 key={p.id}
                 post={p}
-                token={token}
-                operatorName={operatorName}
                 onMarkHandled={() => markMut.mutate({ token, id: p.id, handledBy: operatorName })}
                 onSkip={() => skipMut.mutate({ token, id: p.id })}
                 onGenerateReply={async () => {
@@ -255,10 +246,8 @@ type Post = {
   handledBy: string | null; handledAt: number | null; scrapedAt: number;
 };
 
-function RadarCard({ post, operatorName, onMarkHandled, onSkip, onGenerateReply }: {
+function RadarCard({ post, onMarkHandled, onSkip, onGenerateReply }: {
   post: Post;
-  token: string;
-  operatorName: string;
   onMarkHandled: () => void;
   onSkip: () => void;
   onGenerateReply: () => Promise<string>;
@@ -293,7 +282,6 @@ function RadarCard({ post, operatorName, onMarkHandled, onSkip, onGenerateReply 
   };
 
   const statusColor = post.status === "handled" ? "#22c55e" : post.status === "skipped" ? "#64748b" : "#f0c040";
-  const operatorHint = operatorName; // suppress unused warning
 
   return (
     <div className="p-4 rounded-xl flex flex-col gap-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${color}30`, opacity: post.status !== "pending" ? 0.55 : 1 }}>
@@ -355,7 +343,6 @@ function RadarCard({ post, operatorName, onMarkHandled, onSkip, onGenerateReply 
           </>
         )}
       </div>
-      {operatorHint && null}
     </div>
   );
 }
