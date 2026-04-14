@@ -14,7 +14,7 @@ const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqs
 
 const navItems = [
   { href: "/", label: "首頁", special: false },
-  { href: "/radar", label: "賣家雷達", special: true },
+  { href: "/radar", label: "賣家雷達", special: true, badge: "測試開發中" },
   { href: "/video", label: "影片生成器", special: false },
   { href: "/copy", label: "文案生成器", special: false },
   { href: "/image", label: "圖片處理器", special: false },
@@ -67,7 +67,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="text-sm tracking-[0.1em] transition-all duration-300 relative py-1 px-3 rounded-full"
+                    className="text-sm tracking-[0.1em] transition-all duration-300 relative py-1 px-3 rounded-full inline-flex items-center gap-1.5"
                     style={{
                       color: location === item.href ? "#c7d2fe" : "#818cf8",
                       background: location === item.href ? "rgba(99,102,241,0.2)" : "rgba(99,102,241,0.08)",
@@ -75,6 +75,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     }}
                   >
                     {item.label}
+                    {item.badge && (
+                      <span
+                        className="text-[9px] px-1.5 py-0.5 rounded-full font-medium tracking-wide"
+                        style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 ) : (
                   <Link
@@ -119,14 +127,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div key={item.href}>
                 <Link
                   href={item.href}
-                  className="block py-3 text-sm tracking-[0.1em] transition-colors duration-300"
+                  className="block py-3 text-sm tracking-[0.1em] transition-colors duration-300 flex items-center gap-2"
                   style={item.special ? {
                     color: location === item.href ? "#c7d2fe" : "#818cf8",
                   } : {
                     color: location === item.href ? "oklch(0.72 0.08 75)" : "oklch(0.7 0.01 80)",
                   }}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.badge && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}>
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               </div>
             ))}
