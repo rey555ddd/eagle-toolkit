@@ -891,6 +891,352 @@ async function generateWithGeminiFallback(
   throw lastError;
 }
 
+// ─── Radar (潛在賣家雷達) ─────────────────────────────────────────────────────
+
+const RADAR_TOKEN = "eagle2026"; // 共享密碼；生產可改用 env.RADAR_TOKEN
+const RADAR_BRANDS = [
+  "Hermès", "愛馬仕", "Birkin", "Kelly",
+  "LV", "Louis Vuitton", "路易威登",
+  "Chanel", "香奈兒",
+  "Rolex", "勞力士",
+  "Patek Philippe", "百達翡麗", "AP", "Audemars Piguet", "愛彼",
+  "Vacheron", "江詩丹頓", "Panerai", "沛納海",
+  "Omega", "歐米茄", "Tag Heuer", "Tudor", "帝舵", "Breitling", "IWC",
+  "Jaeger", "積家", "Cartier", "卡地亞",
+  "Tiffany", "Van Cleef", "梵克雅寶", "Bulgari", "寶格麗",
+  "Gucci", "Prada", "Dior",
+  "Bottega", "BV", "Celine", "Fendi", "Burberry",
+  "Balenciaga", "巴黎世家", "YSL", "Saint Laurent", "Givenchy",
+  "Loewe", "Valentino", "Miu Miu", "Goyard", "Coach", "MCM", "Koji",
+  "Montblanc", "萬寶龍",
+];
+const RADAR_INTENT = ["想賣", "脫手", "出清", "二手", "轉讓", "收購", "求售", "售", "賣"];
+const RADAR_MAX_KEEP = 25; // 每小時至多保留 25 則新的
+
+interface RadarScraped {
+  source: "dcard" | "ptt" | "threads";
+  externalId: string;
+  url: string;
+  title: string;
+  content: string;
+  author: string;
+}
+
+function hitsBrand(text: string): string[] {
+  const lower = text.toLowerCase();
+  const hits: string[] = [];
+  for (const b of RADAR_BRANDS) {
+    if (lower.includes(b.toLowerCase())) hits.push(b);
+  }
+  return hits;
+}
+
+function hitsIntent(text: string): boolean {
+  return RADAR_INTENT.some((kw) => text.includes(kw));
+}
+
+function calcPriority(hits: string[], text: string, createdAt: number): number {
+  let score = 40;
+  score += Math.min(20, hits.length * 8); // 品牌 hit 數
+  if (/\b\d{2,3}\s*(萬|k|千|k\s*ntd)/i.test(text)) score += 15; // 有價格
+  if (/發票|盒裝|原單|原廠|保卡/.test(text)) score += 10; // 有證明
+  const ageHours = (Date.now() - createdAt) / 3600000;
+  if (ageHours < 2) score += 15;
+  else if (ageHours < 6) score += 8;
+  return Math.min(100, score);
+}
+
+async function scrapeDcard(): Promise<RadarScraped[]> {
+  try {
+    const res = await fetch("https://www.dcard.tw/service/api/v2/forums/buysell/posts?popular=false&limit=50", {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) return [];
+    const posts = (await res.json()) as Array<{ id: number; title: string; excerpt: string; school?: string; createdAt: string }>;
+    return posts.map((p) => ({
+      source: "dcard" as const,
+      externalId: String(p.id),
+      url: `https://www.dcard.tw/f/buysell/p/${p.id}`,
+      title: p.title || "",
+      content: p.excerpt || "",
+      author: p.school || "anonymous",
+    }));
+  } catch (e) {
+    console.error("[radar] dcard scrape failed:", e);
+    return [];
+  }
+}
+
+async function scrapePTTBoard(board: string): Promise<RadarScraped[]> {
+  try {
+    const res = await fetch(`https://www.ptt.cc/bbs/${board}/index.html`, {
+      headers: { "User-Agent": "Mozilla/5.0", cookie: "over18=1" },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const re = /<div class="title">[\s\S]*?<a href="(\/bbs\/[^"]+)">([^<]+)<\/a>[\s\S]*?<div class="author">([^<]+)<\/div>/g;
+    const out: RadarScraped[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const path = m[1];
+      const title = m[2].trim();
+      const author = m[3].trim();
+      const idMatch = path.match(/M\.(\d+)\./);
+      out.push({
+        source: "ptt",
+        externalId: `${board}-${idMatch?.[1] ?? path}`,
+        url: `https://www.ptt.cc${path}`,
+        title,
+        content: title,
+        author,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error(`[radar] ptt ${board} scrape failed:`, e);
+    return [];
+  }
+}
+
+async function scrapeThreadsTag(tag: string): Promise<RadarScraped[]> {
+  try {
+    const res = await fetch(`https://www.threads.net/search?q=${encodeURIComponent(tag)}&serp_type=default`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const re = /"post":\{[^}]*"code":"([^"]+)"[^}]*"caption":\{[^}]*"text":"([^"]{20,400})"[^}]*\}[^}]*"user":\{[^}]*"username":"([^"]+)"/g;
+    const out: RadarScraped[] = [];
+    let m: RegExpExecArray | null;
+    let n = 0;
+    while ((m = re.exec(html)) !== null && n < 20) {
+      const code = m[1];
+      const text = m[2].replace(/\\n/g, " ").replace(/\\"/g, '"');
+      const username = m[3];
+      out.push({
+        source: "threads",
+        externalId: code,
+        url: `https://www.threads.net/@${username}/post/${code}`,
+        title: text.slice(0, 80),
+        content: text,
+        author: username,
+      });
+      n++;
+    }
+    return out;
+  } catch (e) {
+    console.error(`[radar] threads ${tag} scrape failed:`, e);
+    return [];
+  }
+}
+
+async function runRadarScan(env: Env): Promise<{ scraped: number; inserted: number }> {
+  if (!env.DB) throw new Error("D1 binding DB 未設定");
+
+  const allRaw: RadarScraped[] = [];
+  const [dc, pttLady, pttBuy, pttWatch, th1, th2] = await Promise.all([
+    scrapeDcard(),
+    scrapePTTBoard("Lady_Talk"),
+    scrapePTTBoard("Buy"),
+    scrapePTTBoard("watch"),
+    scrapeThreadsTag("二手精品"),
+    scrapeThreadsTag("脫手"),
+  ]);
+  allRaw.push(...dc, ...pttLady, ...pttBuy, ...pttWatch, ...th1, ...th2);
+
+  // 篩選：必須命中品牌 + 賣意
+  const candidates = allRaw
+    .map((r) => {
+      const combined = (r.title + " " + r.content).slice(0, 1000);
+      const hits = hitsBrand(combined);
+      if (hits.length === 0 || !hitsIntent(combined)) return null;
+      const priority = calcPriority(hits, combined, Date.now());
+      return { ...r, hits, priority };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, RADAR_MAX_KEEP);
+
+  let inserted = 0;
+  for (const c of candidates) {
+    try {
+      const res = await env.DB.prepare(
+        `INSERT OR IGNORE INTO radar_posts
+         (source, external_id, url, title, content, author, brand_tags, priority, scraped_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(c.source, c.externalId, c.url, c.title, c.content, c.author, JSON.stringify(c.hits), c.priority, Date.now())
+        .run();
+      if (res.meta.changes && res.meta.changes > 0) inserted++;
+    } catch (e) {
+      console.error("[radar] insert failed:", e);
+    }
+  }
+  return { scraped: allRaw.length, inserted };
+}
+
+async function generateRadarReply(apiKey: string, title: string, content: string, brands: string[]): Promise<string> {
+  try {
+    const prompt = `你是台灣精品收購品牌「伊果國際」的客服，要在公開貼文底下留言邀請對方私訊報價。對方貼文如下：
+
+標題：${title}
+內容：${content}
+偵測品牌：${brands.join("、")}
+
+請寫一則 40-60 字的留言：
+- 直接、親切，不要官腔
+- 提到偵測到的品牌（讓對方知道你有讀他文）
+- 強調「高價收購」「歡迎私訊」
+- 附 LINE ID：@eagle（可替換）
+- 不要用 emoji
+- 不要 hashtag
+- 不要自我介紹過長
+- 結尾帶一句請對方私訊的行動呼籲
+
+直接輸出留言，不要任何前言。`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    if (!response.ok) return "";
+    const data = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  } catch (e) {
+    console.error("[radar] reply gen failed:", e);
+    return "";
+  }
+}
+
+const radarRouter = router({
+  login: publicProcedure
+    .input(z.object({ username: z.string(), password: z.string() }))
+    .mutation(async ({ input }) => {
+      if (input.username === "eagle2026" && input.password === "eagle2026") {
+        return { ok: true, token: RADAR_TOKEN };
+      }
+      throw new Error("帳號或密碼錯誤");
+    }),
+
+  scanNow: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.token !== RADAR_TOKEN) throw new Error("未授權");
+      return await runRadarScan(ctx.env);
+    }),
+
+  list: publicProcedure
+    .input(
+      z.object({
+        token: z.string(),
+        status: z.enum(["pending", "handled", "skipped", "all"]).default("pending"),
+        source: z.enum(["all", "dcard", "ptt", "threads"]).default("all"),
+        limit: z.number().min(1).max(200).default(80),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      if (input.token !== RADAR_TOKEN) throw new Error("未授權");
+      if (!ctx.env.DB) return { posts: [], stats: { total: 0, pending: 0, handled: 0, skipped: 0 } };
+
+      const whereParts: string[] = [];
+      const bindings: (string | number)[] = [];
+      if (input.status !== "all") {
+        whereParts.push("status = ?");
+        bindings.push(input.status);
+      }
+      if (input.source !== "all") {
+        whereParts.push("source = ?");
+        bindings.push(input.source);
+      }
+      const whereSQL = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+      const postsRes = await ctx.env.DB.prepare(
+        `SELECT * FROM radar_posts ${whereSQL} ORDER BY priority DESC, scraped_at DESC LIMIT ?`
+      )
+        .bind(...bindings, input.limit)
+        .all<{
+          id: number; source: string; external_id: string; url: string; title: string; content: string; author: string;
+          brand_tags: string; priority: number; ai_reply: string | null; status: string;
+          handled_by: string | null; handled_at: number | null; scraped_at: number;
+        }>();
+
+      const statsRes = await ctx.env.DB.prepare(
+        `SELECT status, COUNT(*) as n FROM radar_posts GROUP BY status`
+      ).all<{ status: string; n: number }>();
+
+      const stats = { total: 0, pending: 0, handled: 0, skipped: 0 };
+      for (const r of statsRes.results) {
+        stats.total += r.n;
+        if (r.status === "pending") stats.pending = r.n;
+        if (r.status === "handled") stats.handled = r.n;
+        if (r.status === "skipped") stats.skipped = r.n;
+      }
+
+      const posts = postsRes.results.map((r) => ({
+        id: r.id,
+        source: r.source,
+        url: r.url,
+        title: r.title,
+        content: r.content,
+        author: r.author,
+        brandTags: r.brand_tags ? JSON.parse(r.brand_tags) as string[] : [],
+        priority: r.priority,
+        aiReply: r.ai_reply,
+        status: r.status,
+        handledBy: r.handled_by,
+        handledAt: r.handled_at,
+        scrapedAt: r.scraped_at,
+      }));
+
+      return { posts, stats };
+    }),
+
+  markHandled: publicProcedure
+    .input(z.object({ token: z.string(), id: z.number(), handledBy: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.token !== RADAR_TOKEN) throw new Error("未授權");
+      if (!ctx.env.DB) throw new Error("DB 未設定");
+      await ctx.env.DB.prepare(
+        `UPDATE radar_posts SET status = 'handled', handled_by = ?, handled_at = ? WHERE id = ?`
+      )
+        .bind(input.handledBy ?? "unknown", Date.now(), input.id)
+        .run();
+      return { ok: true };
+    }),
+
+  skip: publicProcedure
+    .input(z.object({ token: z.string(), id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.token !== RADAR_TOKEN) throw new Error("未授權");
+      if (!ctx.env.DB) throw new Error("DB 未設定");
+      await ctx.env.DB.prepare(`UPDATE radar_posts SET status = 'skipped' WHERE id = ?`).bind(input.id).run();
+      return { ok: true };
+    }),
+
+  generateReply: publicProcedure
+    .input(z.object({ token: z.string(), id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.token !== RADAR_TOKEN) throw new Error("未授權");
+      if (!ctx.env.DB) throw new Error("DB 未設定");
+      const row = await ctx.env.DB.prepare(`SELECT * FROM radar_posts WHERE id = ?`).bind(input.id).first<{
+        title: string; content: string; brand_tags: string; ai_reply: string | null;
+      }>();
+      if (!row) throw new Error("貼文不存在");
+      if (row.ai_reply) return { reply: row.ai_reply };
+
+      const brands = row.brand_tags ? (JSON.parse(row.brand_tags) as string[]) : [];
+      const reply = await generateRadarReply(ctx.env.GEMINI_API_KEY, row.title, row.content, brands);
+      if (reply) {
+        await ctx.env.DB.prepare(`UPDATE radar_posts SET ai_reply = ? WHERE id = ?`).bind(reply, input.id).run();
+      }
+      return { reply };
+    }),
+});
+
 // ─── tRPC Routes ──────────────────────────────────────────────────────────────
 
 const appRouter = router({
@@ -1234,6 +1580,8 @@ ${input.originalText}
         return { success: true };
       }),
   }),
+
+  radar: radarRouter,
 });
 
 export type AppRouter = typeof appRouter;

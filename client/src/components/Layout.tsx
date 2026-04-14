@@ -17,6 +17,7 @@ const navItems = [
   { href: "/video", label: "影片生成器", special: false },
   { href: "/copy", label: "文案生成器", special: false },
   { href: "/image", label: "圖片處理器", special: false },
+  { href: "/radar", label: "賣家雷達", special: false },
   { href: "/feedback", label: "修改建議", special: true },
 ];
 

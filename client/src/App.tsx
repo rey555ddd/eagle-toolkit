@@ -9,6 +9,7 @@ import VideoMaker from "./pages/VideoMaker";
 import CopyWriter from "./pages/CopyWriter";
 import ImageEditor from "./pages/ImageEditor";
 import FeedbackBoard from "./pages/FeedbackBoard";
+import Radar from "./pages/Radar";
 import Layout from "./components/Layout";
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/copy" component={CopyWriter} />
       <Route path="/image" component={ImageEditor} />
       <Route path="/feedback" component={FeedbackBoard} />
+      <Route path="/radar" component={Radar} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
