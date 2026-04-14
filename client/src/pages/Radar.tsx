@@ -74,21 +74,23 @@ function LoginGate({ onLogin }: { onLogin: (token: string, name: string) => void
 
 type PostStatus = "pending" | "handled" | "skipped" | "all";
 type SourceFilter = "all" | "dcard" | "ptt" | "threads";
+type StrengthFilter = "all" | "strong" | "weak";
 
 function RadarDashboard({ token, operatorName, onLogout }: { token: string; operatorName: string; onLogout: () => void }) {
   const [statusFilter, setStatusFilter] = useState<PostStatus>("pending");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [strengthFilter, setStrengthFilter] = useState<StrengthFilter>("strong");
   const [lastScanAt, setLastScanAt] = useState<Date | null>(null);
 
   const { data, refetch, isLoading } = trpc.radar.list.useQuery(
-    { token, status: statusFilter, source: sourceFilter, limit: 80 },
+    { token, status: statusFilter, source: sourceFilter, strength: strengthFilter, limit: 120 },
     { refetchInterval: 60000 }
   );
 
   const scanMut = trpc.radar.scanNow.useMutation({
     onSuccess: (res) => {
       setLastScanAt(new Date());
-      toast.success(`掃描完成：找到 ${res.scraped} 則候選，新增 ${res.inserted} 則`);
+      toast.success(`掃描完成：爬到 ${res.scraped} 則貼文，其中 ${res.inserted} 則命中入庫`);
       refetch();
     },
     onError: (e) => {
@@ -166,6 +168,16 @@ function RadarDashboard({ token, operatorName, onLogout }: { token: string; oper
               { id: "dcard", label: "Dcard" },
               { id: "ptt", label: "PTT" },
               { id: "threads", label: "Threads" },
+            ]}
+          />
+          <FilterGroup
+            label="命中強度"
+            value={strengthFilter}
+            onChange={(v) => setStrengthFilter(v as StrengthFilter)}
+            options={[
+              { id: "strong", label: "🔥 強（品牌+賣意）" },
+              { id: "weak", label: "弱（品牌或賣意）" },
+              { id: "all", label: "全部" },
             ]}
           />
         </div>

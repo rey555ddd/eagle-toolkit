@@ -911,7 +911,7 @@ const RADAR_BRANDS = [
   "Montblanc", "萬寶龍",
 ];
 const RADAR_INTENT = ["想賣", "脫手", "出清", "二手", "轉讓", "收購", "求售", "售", "賣"];
-const RADAR_MAX_KEEP = 25; // 每小時至多保留 25 則新的
+const RADAR_MAX_KEEP = 120; // 每次掃描至多新增 120 則（強弱合計）
 
 interface RadarScraped {
   source: "dcard" | "ptt" | "threads";
@@ -935,67 +935,89 @@ function hitsIntent(text: string): boolean {
   return RADAR_INTENT.some((kw) => text.includes(kw));
 }
 
-function calcPriority(hits: string[], text: string, createdAt: number): number {
-  let score = 40;
-  score += Math.min(20, hits.length * 8); // 品牌 hit 數
-  if (/\b\d{2,3}\s*(萬|k|千|k\s*ntd)/i.test(text)) score += 15; // 有價格
-  if (/發票|盒裝|原單|原廠|保卡/.test(text)) score += 10; // 有證明
+function calcPriority(hits: string[], hasIntent: boolean, text: string, createdAt: number): number {
+  let score = 0;
+  if (hits.length > 0 && hasIntent) score = 60; // 強命中基底
+  else if (hits.length > 0) score = 30; // 有品牌無賣意
+  else if (hasIntent) score = 20; // 有賣意無品牌
+  score += Math.min(20, hits.length * 8);
+  if (/\b\d{2,3}\s*(萬|k|千|k\s*ntd)/i.test(text)) score += 10;
+  if (/發票|盒裝|原單|原廠|保卡/.test(text)) score += 8;
   const ageHours = (Date.now() - createdAt) / 3600000;
-  if (ageHours < 2) score += 15;
-  else if (ageHours < 6) score += 8;
+  if (ageHours < 2) score += 10;
+  else if (ageHours < 6) score += 5;
   return Math.min(100, score);
 }
 
 async function scrapeDcard(): Promise<RadarScraped[]> {
+  const cutoff = Date.now() - 14 * 86400 * 1000; // 14 天前
+  const out: RadarScraped[] = [];
+  let before: number | null = null;
   try {
-    const res = await fetch("https://www.dcard.tw/service/api/v2/forums/buysell/posts?popular=false&limit=50", {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
-    if (!res.ok) return [];
-    const posts = (await res.json()) as Array<{ id: number; title: string; excerpt: string; school?: string; createdAt: string }>;
-    return posts.map((p) => ({
-      source: "dcard" as const,
-      externalId: String(p.id),
-      url: `https://www.dcard.tw/f/buysell/p/${p.id}`,
-      title: p.title || "",
-      content: p.excerpt || "",
-      author: p.school || "anonymous",
-    }));
+    for (let page = 0; page < 6; page++) {
+      const url = `https://www.dcard.tw/service/api/v2/forums/buysell/posts?popular=false&limit=100${before ? `&before=${before}` : ""}`;
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!res.ok) break;
+      const posts = (await res.json()) as Array<{ id: number; title: string; excerpt: string; school?: string; createdAt: string }>;
+      if (!Array.isArray(posts) || posts.length === 0) break;
+      let reachedCutoff = false;
+      for (const p of posts) {
+        const created = Date.parse(p.createdAt);
+        if (Number.isFinite(created) && created < cutoff) {
+          reachedCutoff = true;
+          break;
+        }
+        out.push({
+          source: "dcard",
+          externalId: String(p.id),
+          url: `https://www.dcard.tw/f/buysell/p/${p.id}`,
+          title: p.title || "",
+          content: p.excerpt || "",
+          author: p.school || "anonymous",
+        });
+      }
+      if (reachedCutoff) break;
+      before = posts[posts.length - 1].id;
+    }
   } catch (e) {
     console.error("[radar] dcard scrape failed:", e);
-    return [];
   }
+  return out;
 }
 
-async function scrapePTTBoard(board: string): Promise<RadarScraped[]> {
+async function scrapePTTBoard(board: string, depth = 4): Promise<RadarScraped[]> {
+  const out: RadarScraped[] = [];
+  let nextPath = `/bbs/${board}/index.html`;
   try {
-    const res = await fetch(`https://www.ptt.cc/bbs/${board}/index.html`, {
-      headers: { "User-Agent": "Mozilla/5.0", cookie: "over18=1" },
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    const re = /<div class="title">[\s\S]*?<a href="(\/bbs\/[^"]+)">([^<]+)<\/a>[\s\S]*?<div class="author">([^<]+)<\/div>/g;
-    const out: RadarScraped[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
-      const path = m[1];
-      const title = m[2].trim();
-      const author = m[3].trim();
-      const idMatch = path.match(/M\.(\d+)\./);
-      out.push({
-        source: "ptt",
-        externalId: `${board}-${idMatch?.[1] ?? path}`,
-        url: `https://www.ptt.cc${path}`,
-        title,
-        content: title,
-        author,
+    for (let page = 0; page < depth && nextPath; page++) {
+      const res = await fetch(`https://www.ptt.cc${nextPath}`, {
+        headers: { "User-Agent": "Mozilla/5.0", cookie: "over18=1" },
       });
+      if (!res.ok) break;
+      const html = await res.text();
+      const re = /<div class="title">[\s\S]*?<a href="(\/bbs\/[^"]+)">([^<]+)<\/a>[\s\S]*?<div class="author">([^<]+)<\/div>/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(html)) !== null) {
+        const path = m[1];
+        const title = m[2].trim();
+        const author = m[3].trim();
+        const idMatch = path.match(/M\.(\d+)\./);
+        out.push({
+          source: "ptt",
+          externalId: `${board}-${idMatch?.[1] ?? path}`,
+          url: `https://www.ptt.cc${path}`,
+          title,
+          content: title,
+          author,
+        });
+      }
+      const prevMatch = html.match(/<a class="btn wide" href="([^"]+)">&lsaquo; 上頁<\/a>/);
+      nextPath = prevMatch ? prevMatch[1] : "";
     }
-    return out;
   } catch (e) {
     console.error(`[radar] ptt ${board} scrape failed:`, e);
-    return [];
   }
+  return out;
 }
 
 async function scrapeThreadsTag(tag: string): Promise<RadarScraped[]> {
@@ -1034,23 +1056,26 @@ async function runRadarScan(env: Env): Promise<{ scraped: number; inserted: numb
   if (!env.DB) throw new Error("D1 binding DB 未設定");
 
   const allRaw: RadarScraped[] = [];
-  const [dc, pttLady, pttBuy, pttWatch, th1, th2] = await Promise.all([
+  const [dc, pttLady, pttBuy, pttWatch, th1, th2, th3, th4] = await Promise.all([
     scrapeDcard(),
     scrapePTTBoard("Lady_Talk"),
     scrapePTTBoard("Buy"),
     scrapePTTBoard("watch"),
     scrapeThreadsTag("二手精品"),
     scrapeThreadsTag("脫手"),
+    scrapeThreadsTag("愛馬仕"),
+    scrapeThreadsTag("勞力士"),
   ]);
-  allRaw.push(...dc, ...pttLady, ...pttBuy, ...pttWatch, ...th1, ...th2);
+  allRaw.push(...dc, ...pttLady, ...pttBuy, ...pttWatch, ...th1, ...th2, ...th3, ...th4);
 
-  // 篩選：必須命中品牌 + 賣意
+  // 放寬過濾：品牌 OR 賣意 擇一命中即入庫（強弱分數不同）
   const candidates = allRaw
     .map((r) => {
       const combined = (r.title + " " + r.content).slice(0, 1000);
       const hits = hitsBrand(combined);
-      if (hits.length === 0 || !hitsIntent(combined)) return null;
-      const priority = calcPriority(hits, combined, Date.now());
+      const intent = hitsIntent(combined);
+      if (hits.length === 0 && !intent) return null; // 兩者都沒中 → 跳過
+      const priority = calcPriority(hits, intent, combined, Date.now());
       return { ...r, hits, priority };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
@@ -1135,7 +1160,8 @@ const radarRouter = router({
         token: z.string(),
         status: z.enum(["pending", "handled", "skipped", "all"]).default("pending"),
         source: z.enum(["all", "dcard", "ptt", "threads"]).default("all"),
-        limit: z.number().min(1).max(200).default(80),
+        strength: z.enum(["all", "strong", "weak"]).default("strong"),
+        limit: z.number().min(1).max(300).default(120),
       })
     )
     .query(async ({ input, ctx }) => {
@@ -1152,6 +1178,8 @@ const radarRouter = router({
         whereParts.push("source = ?");
         bindings.push(input.source);
       }
+      if (input.strength === "strong") whereParts.push("priority >= 60");
+      else if (input.strength === "weak") whereParts.push("priority < 60");
       const whereSQL = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
 
       const postsRes = await ctx.env.DB.prepare(
