@@ -187,6 +187,26 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Changelog Section */}
+      <section className="py-10" style={{ borderTop: "1px solid rgba(201,168,76,0.12)" }}>
+        <div className="container mx-auto px-4 lg:px-8 max-w-4xl">
+          <p className="text-[10px] tracking-[0.12em] mb-4" style={{ color: "rgba(212,160,23,0.6)" }}>CHANGELOG</p>
+          <div className="space-y-3">
+            {[
+              { date: "2026-04-16", tag: "New", desc: "文案生成器升級 RefineBox，支援微調指令套用再生成" },
+              { date: "2026-04-16", tag: "New", desc: "新增 AI 回饋欄（採用 / 重做 / 存金庫）" },
+              { date: "2026-04-14", tag: "Optimize", desc: "圖片生成三段 fallback：Imagen4 → gemini-2.5-flash-image → gemini-2.0-flash-lite" },
+            ].map((item, i) => (
+              <div key={i} className="flex items-start gap-3 text-[12px]">
+                <span className="font-mono mt-0.5 w-24 shrink-0" style={{ color: "rgba(255,255,255,0.25)" }}>{item.date}</span>
+                <span className="px-2 py-0.5 rounded-sm text-[10px] tracking-[0.06em] shrink-0" style={{ background: "rgba(212,160,23,0.12)", color: "oklch(0.72 0.08 75)", border: "1px solid rgba(212,160,23,0.2)" }}>{item.tag}</span>
+                <span style={{ color: "rgba(255,255,255,0.5)" }}>{item.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Brand Section */}
       <section className="py-16 sm:py-20 border-t border-[oklch(0.72_0.08_75/8%)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

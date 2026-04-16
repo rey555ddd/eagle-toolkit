@@ -10,6 +10,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import FeedbackBar from "@/components/FeedbackBar";
+import LoadingBanner from "@/components/LoadingBanner";
 
 const copyStyles = [
   { id: "seeding", label: "種草帶貨", desc: "引發購買欲望的種草文案" },
@@ -119,6 +121,7 @@ export default function CopyWriter() {
   const optimizing = rewriteMutation.isPending;
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState("");
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -141,12 +144,21 @@ export default function CopyWriter() {
     });
   };
 
-  const handleOptimize = () => {
+  const handleOptimize = (instruction?: string) => {
     if (!generatedCopy) return;
     rewriteMutation.mutate({
       originalText: generatedCopy,
       style: copyStyle as "seeding" | "live" | "minimal" | "ai",
+      instruction: instruction?.trim() || undefined,
     });
+  };
+
+  const handleRefine = () => {
+    if (!refineInstruction.trim()) {
+      toast.error("請先輸入修改指令");
+      return;
+    }
+    handleOptimize(refineInstruction);
   };
 
   const handleCopy = useCallback(async (text: string) => {
@@ -342,29 +354,71 @@ export default function CopyWriter() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm tracking-[0.1em] text-[oklch(0.72_0.08_75)] font-serif">生成結果</h3>
                 {generatedCopy && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleOptimize}
-                      disabled={optimizing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] tracking-[0.08em] border border-[oklch(0.72_0.08_75/30%)] text-[oklch(0.72_0.08_75)] hover:bg-[oklch(0.72_0.08_75/8%)] transition-colors disabled:opacity-50"
-                    >
-                      {optimizing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                      AI 改寫
-                    </button>
-                    <button
-                      onClick={() => handleCopy(generatedCopy)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] tracking-[0.08em] border border-[oklch(0.72_0.08_75/30%)] text-[oklch(0.72_0.08_75)] hover:bg-[oklch(0.72_0.08_75/8%)] transition-colors"
-                    >
-                      {copied ? <Check size={11} /> : <Copy size={11} />}
-                      {copied ? "已複製" : "複製"}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleCopy(generatedCopy)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] tracking-[0.08em] border border-[oklch(0.72_0.08_75/30%)] text-[oklch(0.72_0.08_75)] hover:bg-[oklch(0.72_0.08_75/8%)] transition-colors"
+                  >
+                    {copied ? <Check size={11} /> : <Copy size={11} />}
+                    {copied ? "已複製" : "複製"}
+                  </button>
                 )}
               </div>
 
-              {generatedCopy ? (
-                <div className="text-sm text-[oklch(0.82_0.01_80)] leading-relaxed whitespace-pre-wrap font-light">
-                  {generatedCopy}
+              {(generating || optimizing) && !generatedCopy ? (
+                <LoadingBanner message="Gemini AI 生成精品文案中..." />
+              ) : generatedCopy ? (
+                <div className="space-y-4">
+                  <div className="text-sm text-[oklch(0.82_0.01_80)] leading-relaxed whitespace-pre-wrap font-light">
+                    {generatedCopy}
+                  </div>
+
+                  <FeedbackBar
+                    tool="copywriter"
+                    toolContext={`${productType} / ${copyStyle}`}
+                    outputText={generatedCopy}
+                    className="mt-3"
+                  />
+
+                  {/* ── RefineBox ── */}
+                  <div
+                    className="rounded-sm p-4 space-y-3 mt-4"
+                    style={{ background: "rgba(212,160,23,0.06)", border: "1px solid rgba(212,160,23,0.25)" }}
+                  >
+                    <label className="text-[10px] tracking-[0.06em] flex items-center gap-1.5" style={{ color: "oklch(0.72 0.08 75)" }}>
+                      ✏️ 修改指令（例：更口語、縮短一半、加入限時感、改成 Dcard 語氣）
+                    </label>
+                    <textarea
+                      value={refineInstruction}
+                      onChange={(e) => setRefineInstruction(e.target.value)}
+                      placeholder="輸入微調指令，按『套用指令再生成』"
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-sm text-xs outline-none resize-none"
+                      style={{
+                        background: "rgba(0,0,0,0.3)",
+                        border: "1px solid rgba(212,160,23,0.15)",
+                        color: "oklch(0.82 0.01 80)",
+                      }}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRefine}
+                        disabled={optimizing || generating}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-sm text-[11px] tracking-[0.06em] transition-all disabled:opacity-50"
+                        style={{ background: "rgba(212,160,23,0.18)", border: "1px solid rgba(212,160,23,0.4)", color: "oklch(0.82 0.08 75)" }}
+                      >
+                        {optimizing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        套用指令再生成
+                      </button>
+                      <button
+                        onClick={() => { setRefineInstruction(""); handleOptimize(); }}
+                        disabled={optimizing || generating}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-sm text-[11px] tracking-[0.06em] transition-all disabled:opacity-50"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}
+                      >
+                        完全重新生成
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-48 text-center">

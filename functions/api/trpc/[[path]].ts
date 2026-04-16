@@ -1382,6 +1382,7 @@ ${input.customNote ? `補充說明：${input.customNote}` : ''}
         z.object({
           originalText: z.string().max(2000),
           style: z.enum(['seeding', 'live', 'minimal', 'ai']),
+          instruction: z.string().max(500).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1408,7 +1409,7 @@ ${input.customNote ? `補充說明：${input.customNote}` : ''}
 使用繁體中文，符合台灣 FB/IG 閱讀習慣。`;
 
         const userPrompt = `請將以下文案改寫為${styleMap[input.style]}：
-
+${input.instruction ? `\n特別調整要求：${input.instruction}\n` : ''}
 原文：
 ${input.originalText}
 
@@ -1606,6 +1607,35 @@ ${input.originalText}
         }
         await ctx.env.DB.prepare('DELETE FROM feedbacks WHERE id = ?').bind(input.id).run();
         return { success: true };
+      }),
+
+    // ── AI Output Rating (FeedbackBar) ────────────────────────────────────
+    status: publicProcedure.query(({ ctx }) => ({
+      configured: !!ctx.env.DB,
+    })),
+
+    rateOutput: publicProcedure
+      .input(z.object({
+        tool: z.string(),
+        toolContext: z.string().optional(),
+        outputText: z.string(),
+        rating: z.enum(['up', 'down', 'gold']),
+        userName: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = ctx.env.DB as any;
+        if (!db) return { success: false, stored: false };
+        const id = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        await db.prepare(
+          `INSERT INTO feedback (id, output_id, rating, tool, created_at) VALUES (?, ?, ?, ?, datetime('now'))`
+        ).bind(id, `adhoc_${id}`, input.rating, input.tool).run();
+        if (input.rating === 'gold') {
+          const gid = `g_${id}`;
+          await db.prepare(
+            `INSERT INTO gold_library (id, content, tool, created_at) VALUES (?, ?, ?, datetime('now'))`
+          ).bind(gid, input.outputText, input.tool).run();
+        }
+        return { success: true, stored: true };
       }),
   }),
 
