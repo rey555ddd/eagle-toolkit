@@ -118,18 +118,64 @@ export default function ImageEditor() {
     [handleFileSelect]
   );
 
+  // Canvas 合成：把透明去背商品疊在 AI 背景上
+  const compositeOnCanvas = async (cutoutBase64: string, backgroundBase64: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const ctx = canvas.getContext("2d")!;
+
+      const bgImg = new Image();
+      const cutoutImg = new Image();
+
+      bgImg.onload = () => {
+        ctx.drawImage(bgImg, 0, 0, 1024, 1024);
+
+        cutoutImg.onload = () => {
+          // 商品保持原比例、留 10% 邊距、置中
+          const padding = 0.1;
+          const maxSize = 1024 * (1 - padding * 2);
+          const scale = Math.min(maxSize / cutoutImg.width, maxSize / cutoutImg.height);
+          const w = cutoutImg.width * scale;
+          const h = cutoutImg.height * scale;
+          const x = (1024 - w) / 2;
+          const y = (1024 - h) / 2;
+          ctx.drawImage(cutoutImg, x, y, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.95));
+        };
+        cutoutImg.onerror = () => reject(new Error("商品圖載入失敗"));
+        cutoutImg.src = `data:image/png;base64,${cutoutBase64}`;
+      };
+      bgImg.onerror = () => reject(new Error("背景圖載入失敗"));
+      bgImg.src = `data:image/jpeg;base64,${backgroundBase64}`;
+    });
+  };
+
   const applyBgMutation = trpc.imageProcessor.applyLuxuryBackground.useMutation({
-    onSuccess: (data) => {
-      if (data.imageBase64) {
+    onSuccess: async (data) => {
+      if (data.useCanvas && data.cutoutBase64 && data.backgroundBase64) {
+        // 商品棚拍模式：Canvas 合成（文字 100% 保留）
+        try {
+          const composited = await compositeOnCanvas(data.cutoutBase64, data.backgroundBase64);
+          setResultUrl(composited);
+          setStep(2);
+          toast.success("✨ 合成完成！商品文字完整保留");
+        } catch (err) {
+          toast.error("Canvas 合成失敗：" + String(err));
+        }
+      } else if (data.imageBase64) {
+        // 情境生活照模式：直接顯示 AI 生成結果
         setResultUrl(`data:image/jpeg;base64,${data.imageBase64}`);
+        setStep(2);
+        if (data.usedFallback) {
+          toast.success("圖片已生成！（使用備用 AI 方案）");
+        } else {
+          toast.success("✨ Imagen 3 AI 圖片已生成！");
+        }
       } else {
         setResultUrl(null);
-      }
-      setStep(2);
-      if (data.usedFallback) {
-        toast.success("圖片已生成！（使用備用 AI 方案）");
-      } else {
-        toast.success("✨ Imagen 4 AI 圖片已生成！");
+        setStep(2);
       }
     },
     onError: (err) => {

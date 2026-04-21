@@ -65,6 +65,63 @@ async function generateWithImagen(
   return imageBytes; // base64
 }
 
+// ─── remove.bg 去背（商品棚拍模式：保留商品原始像素）────────────────────────
+// 呼叫 remove.bg API，回傳透明背景 PNG base64
+// 商品上所有文字、中文標示、logo 100% 保留，因為是原始像素
+
+async function removeBackgroundApi(
+  apiKey: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<string> {
+  const binary = atob(imageBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType });
+
+  const formData = new FormData();
+  formData.append("image_file", blob, "product.jpg");
+  formData.append("size", "auto");
+
+  const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": apiKey },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`remove.bg 失敗 (${res.status}): ${errText}`);
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  const resultBytes = new Uint8Array(arrayBuffer);
+  let bin = "";
+  for (let i = 0; i < resultBytes.length; i++) bin += String.fromCharCode(resultBytes[i]);
+  return btoa(bin); // 透明 PNG base64
+}
+
+// ─── Imagen 3 純背景生成（商品棚拍模式：只生成背景，不含商品）────────────────
+
+async function generateBackgroundOnly(bgPrompt: string): Promise<string> {
+  const ai = getGenAIClient();
+  const prompt = `${bgPrompt} Empty studio background with no products, no objects, no text. Pure background texture and lighting only. Professional luxury product photography backdrop.`;
+
+  const response = await ai.models.generateImages({
+    model: "imagen-3.0-generate-001",
+    prompt,
+    config: {
+      numberOfImages: 1,
+      aspectRatio: "1:1",
+      safetyFilterLevel: "BLOCK_ONLY_HIGH" as never,
+    },
+  });
+
+  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+  if (!imageBytes) throw new Error("背景圖片生成失敗");
+  return imageBytes; // base64
+}
+
 // ─── Imagen 3 Background Swap（商品棚拍模式：保留商品原貌）──────────────────
 // 使用 editImage + EDIT_MODE_BGSWAP，AI 自動去背並套用新背景
 // 商品上的文字、logo、中文包裝標示 100% 保留不變
@@ -321,25 +378,24 @@ ${input.originalText}
         let usedFallback = false;
 
         if (input.mode === "product") {
-          // ── 商品棚拍模式：BGSWAP 保留商品原貌（文字/中文包裝完整保留）──
-          try {
-            resultBase64 = await generateWithImagenBgSwap(prompt, input.imageBase64, input.mimeType);
-          } catch (bgswapError) {
-            console.warn("[BGSWAP failed, trying Gemini fallback]", bgswapError);
-            try {
-              const productPrompt = `${prompt} CRITICAL: preserve ALL text, Chinese characters, labels, logos, and product details EXACTLY as shown. Only replace the background.`;
-              resultBase64 = await generateWithGeminiFallback(productPrompt, input.imageBase64, input.mimeType);
-              usedFallback = true;
-            } catch (fallbackError) {
-              console.error("[Gemini fallback also failed]", fallbackError);
-              throw new Error(`AI 圖片生成失敗，請稍後重試。原因：${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-            }
-          }
+          // ── 商品棚拍模式：remove.bg 去背 + Imagen 3 純背景 ──
+          // 前端用 Canvas 合成，原始商品像素完整保留，文字 100% 清晰
+          const removeBgKey = ENV.removeBgApiKey;
+          if (!removeBgKey) throw new Error("REMOVE_BG_API_KEY 未設定，請在 Cloudflare Pages 環境變數中配置");
+
+          const [cutoutBase64, backgroundBase64] = await Promise.all([
+            removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType),
+            generateBackgroundOnly(prompt),
+          ]);
+
           return {
-            imageBase64: resultBase64,
+            imageBase64: null,
+            cutoutBase64,       // 透明 PNG，前端 Canvas 用
+            backgroundBase64,   // Imagen 3 純背景，前端 Canvas 用
+            useCanvas: true,    // 通知前端用 Canvas 合成
             backgroundStyle: input.backgroundStyle,
-            usedFallback,
-            message: usedFallback ? "圖片已生成（使用備用 AI 方案）" : "✨ 商品棚拍合成完成，文字標示完整保留",
+            usedFallback: false,
+            message: "✨ 去背完成，前端合成中",
           };
         } else {
           // ── 情境生活照模式：Imagen 3 重新生成（原有邏輯不變）──
