@@ -352,10 +352,11 @@ ${input.originalText}
             "rose-petal",
             "crystal-light",
           ]),
-          // 新增：模式選擇
-          // "product" = 商品棚拍模式（保留文字/包裝，用 BGSWAP）
-          // "lifestyle" = 情境生活照模式（AI 重新生成，原有邏輯）
-          mode: z.enum(["product", "lifestyle"]).default("lifestyle"),
+          // 模式選擇
+          // "ai-studio"  = AI 棚拍模式（remove.bg 去背 + Imagen 3 生成背景 + Canvas 合成）
+          // "real-bg"    = 純去背模式（remove.bg 去背 + 自訂背景 + Canvas 合成，不跑 Imagen）
+          // "lifestyle"  = 情境生活照（完整 Imagen 3 重新生成，原有邏輯不變）
+          mode: z.enum(["ai-studio", "real-bg", "lifestyle"]).default("ai-studio"),
           colorLock: z.boolean().default(false),
           customBackgroundBase64: z.string().optional(),
         })
@@ -378,14 +379,17 @@ ${input.originalText}
         let resultBase64: string;
         let usedFallback = false;
 
-        if (input.mode === "product") {
-          // ── 商品棚拍模式：remove.bg 去背 + 背景（自訂或 Imagen 3 生成）──
+        if (input.mode === "ai-studio" || input.mode === "real-bg") {
+          // ── AI 棚拍 / 純去背：remove.bg 去背 + 背景（自訂或 Imagen 3 生成）──
           // 前端用 Canvas 合成，原始商品像素完整保留，文字 100% 清晰
           const removeBgKey = ENV.removeBgApiKey;
           if (!removeBgKey) throw new Error("REMOVE_BG_API_KEY 未設定，請在 Cloudflare Pages 環境變數中配置");
 
-          if (input.customBackgroundBase64) {
-            // 有自訂背景：只去背，不呼叫 Imagen 3
+          if (input.mode === "real-bg" || input.customBackgroundBase64) {
+            // real-bg 模式 or 有自訂背景：只去背，不呼叫 Imagen 3
+            if (!input.customBackgroundBase64) {
+              throw new Error("純去背模式需要提供背景照片（customBackgroundBase64）");
+            }
             const cutoutBase64 = await removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType);
             return {
               imageBase64: null,
@@ -398,6 +402,7 @@ ${input.originalText}
             };
           }
 
+          // ai-studio 模式，無自訂背景：Imagen 3 生成純背景
           const [cutoutBase64, backgroundBase64] = await Promise.all([
             removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType),
             generateBackgroundOnly(prompt),

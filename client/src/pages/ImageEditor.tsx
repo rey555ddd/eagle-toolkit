@@ -11,6 +11,8 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
+// ─── 資料常數 ────────────────────────────────────────────────────────────────
+
 const BACKGROUNDS = [
   {
     id: "marble-white",
@@ -74,23 +76,65 @@ const BACKGROUNDS = [
   },
 ];
 
-// 預設背景庫（商品棚拍模式用）
+// 純去背模式的預設背景庫（不含 ai-generate 特殊項）
 const PRESET_BACKGROUNDS = [
   { id: 'marble-white', label: '白大理石', url: 'https://images.unsplash.com/photo-1615876234886-fd9a39fda97f?w=1024&q=80&fit=crop' },
-  { id: 'marble-grey', label: '灰大理石', url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1024&q=80&fit=crop' },
-  { id: 'wood-light', label: '淺木桌', url: 'https://images.unsplash.com/photo-1528323273322-d81458248d40?w=1024&q=80&fit=crop' },
-  { id: 'wood-dark', label: '深木桌', url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1024&q=80&fit=crop' },
-  { id: 'concrete', label: '水泥', url: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=1024&q=80&fit=crop' },
-  { id: 'linen', label: '亞麻布', url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
-  { id: 'black-studio', label: '黑色棚', url: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1024&q=80&fit=crop' },
-  { id: 'white-studio', label: '白色棚', url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
-  { id: 'pastel-pink', label: '粉色系', url: 'https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=1024&q=80&fit=crop' },
-  { id: 'ai-generate', label: 'AI生成', url: null },
+  { id: 'marble-grey',  label: '灰大理石', url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1024&q=80&fit=crop' },
+  { id: 'wood-light',   label: '淺木桌',   url: 'https://images.unsplash.com/photo-1528323273322-d81458248d40?w=1024&q=80&fit=crop' },
+  { id: 'wood-dark',    label: '深木桌',   url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1024&q=80&fit=crop' },
+  { id: 'concrete',     label: '水泥',     url: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=1024&q=80&fit=crop' },
+  { id: 'linen',        label: '亞麻布',   url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
+  { id: 'black-studio', label: '黑色棚',   url: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1024&q=80&fit=crop' },
+  { id: 'white-studio', label: '白色棚',   url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
+  { id: 'pastel-pink',  label: '粉色系',   url: 'https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=1024&q=80&fit=crop' },
+  { id: 'dark-gradient',label: '深色漸層', url: 'https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=1024&q=80&fit=crop' },
 ] as const;
 
 type PresetBgId = typeof PRESET_BACKGROUNDS[number]['id'];
 
+// ─── 模式定義 ────────────────────────────────────────────────────────────────
+
+type ProcessMode = "ai-studio" | "real-bg" | "lifestyle";
+
+const MODE_CONFIG: Record<ProcessMode, {
+  emoji: string;
+  title: string;
+  desc: string;
+  badge?: string;
+  btnLabel: string;
+  loadingLabel: string;
+  loadingDesc: string;
+}> = {
+  "ai-studio": {
+    emoji: "🎨",
+    title: "AI 棚拍模式",
+    desc: "AI 生成奢華背景，去背技術保留商品外觀",
+    btnLabel: "開始 AI 棚拍合成",
+    loadingLabel: "去背 + AI 生成背景中...",
+    loadingDesc: "AI 正在去背並生成奢華背景，文字標示完整保留，約需 20-40 秒...",
+  },
+  "real-bg": {
+    emoji: "🖼️",
+    title: "純去背模式",
+    desc: "選擇或上傳真實照片背景，文字保留率最高",
+    badge: "⭐ 文字保留率最高",
+    btnLabel: "開始去背合成",
+    loadingLabel: "去背合成中...",
+    loadingDesc: "AI 正在去背並合成您選擇的背景，約需 10-20 秒...",
+  },
+  "lifestyle": {
+    emoji: "🛍️",
+    title: "情境生活照",
+    desc: "AI 完整重新生成，適合無文字的精品包",
+    btnLabel: "開始 AI 重新生成",
+    loadingLabel: "Imagen 3 重新生成中...",
+    loadingDesc: "Imagen 3 正在分析情境並重新生成，約需 20-40 秒...",
+  },
+};
+
 const STEPS = ["上傳商品圖", "選擇背景", "生成下載"];
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ImageEditor() {
   const [step, setStep] = useState(0);
@@ -100,16 +144,17 @@ export default function ImageEditor() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [colorLock, setColorLock] = useState(false);
-  const [mode, setMode] = useState<"product" | "lifestyle">("product");
+  const [mode, setMode] = useState<ProcessMode>("ai-studio");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 背景選擇器 state（商品棚拍模式）
-  // bgSource: 'preset' = 選了預設庫其中一張；'upload' = 上傳了自訂背景
+  // 純去背模式的背景選擇 state
   const [bgSource, setBgSource] = useState<'preset' | 'upload'>('preset');
-  const [selectedPresetBg, setSelectedPresetBg] = useState<PresetBgId>('ai-generate');
+  const [selectedPresetBg, setSelectedPresetBg] = useState<PresetBgId | null>(null);
   const [customBgBase64, setCustomBgBase64] = useState<string | null>(null);
-  const [presetBgLoading, setPresetBgLoading] = useState<string | null>(null); // 正在載入的預設背景 id
+  const [presetBgLoading, setPresetBgLoading] = useState<string | null>(null);
   const bgUploadRef = useRef<HTMLInputElement>(null);
+
+  // ─── 上傳邏輯 ───────────────────────────────────────────────────────────────
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -142,7 +187,8 @@ export default function ImageEditor() {
     [handleFileSelect]
   );
 
-  // Canvas 合成：把透明去背商品疊在 AI 背景上
+  // ─── Canvas 合成 ─────────────────────────────────────────────────────────────
+
   const compositeOnCanvas = async (cutoutBase64: string, backgroundBase64: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
@@ -155,9 +201,7 @@ export default function ImageEditor() {
 
       bgImg.onload = () => {
         ctx.drawImage(bgImg, 0, 0, 1024, 1024);
-
         cutoutImg.onload = () => {
-          // 商品保持原比例、留 10% 邊距、置中
           const padding = 0.1;
           const maxSize = 1024 * (1 - padding * 2);
           const scale = Math.min(maxSize / cutoutImg.width, maxSize / cutoutImg.height);
@@ -176,10 +220,11 @@ export default function ImageEditor() {
     });
   };
 
+  // ─── tRPC mutation ───────────────────────────────────────────────────────────
+
   const applyBgMutation = trpc.imageProcessor.applyLuxuryBackground.useMutation({
     onSuccess: async (data) => {
       if (data.useCanvas && data.cutoutBase64 && data.backgroundBase64) {
-        // 商品棚拍模式：Canvas 合成（文字 100% 保留）
         try {
           const composited = await compositeOnCanvas(data.cutoutBase64, data.backgroundBase64);
           setResultUrl(composited);
@@ -189,7 +234,6 @@ export default function ImageEditor() {
           toast.error("Canvas 合成失敗：" + String(err));
         }
       } else if (data.imageBase64) {
-        // 情境生活照模式：直接顯示 AI 生成結果
         setResultUrl(`data:image/jpeg;base64,${data.imageBase64}`);
         setStep(2);
         if (data.usedFallback) {
@@ -207,21 +251,45 @@ export default function ImageEditor() {
     },
   });
 
+  // ─── 生成觸發 ────────────────────────────────────────────────────────────────
+
   const handleGenerate = () => {
-    if (!originalImage || !selectedBg) {
+    if (!originalImage) return;
+
+    // real-bg 模式：需要背景照片
+    if (mode === "real-bg") {
+      if (!customBgBase64) {
+        toast.error("請先選擇或上傳背景照片");
+        return;
+      }
+      applyBgMutation.mutate({
+        imageBase64: originalImage,
+        mimeType: originalMime as "image/jpeg" | "image/png",
+        backgroundStyle: (selectedBg ?? "marble-white") as Parameters<typeof applyBgMutation.mutate>[0]["backgroundStyle"],
+        colorLock,
+        mode: "real-bg",
+        customBackgroundBase64: customBgBase64,
+      });
+      return;
+    }
+
+    // ai-studio / lifestyle 模式：需要選擇背景風格
+    if (!selectedBg) {
       toast.error("請先選擇背景風格");
       return;
     }
+
     applyBgMutation.mutate({
       imageBase64: originalImage,
       mimeType: originalMime as "image/jpeg" | "image/png",
       backgroundStyle: selectedBg as Parameters<typeof applyBgMutation.mutate>[0]["backgroundStyle"],
       colorLock,
       mode,
-      // 有自訂背景（預設庫非AI生成 或 上傳）才傳；選 AI生成 時傳 undefined
-      customBackgroundBase64: (bgSource === 'preset' && selectedPresetBg === 'ai-generate') ? undefined : (customBgBase64 ?? undefined),
+      customBackgroundBase64: undefined,
     });
   };
+
+  // ─── 下載 ────────────────────────────────────────────────────────────────────
 
   const handleDownload = async () => {
     if (!resultUrl) return;
@@ -236,28 +304,38 @@ export default function ImageEditor() {
     }
   };
 
+  // ─── Reset ───────────────────────────────────────────────────────────────────
+
   const handleReset = () => {
     setStep(0);
     setOriginalImage(null);
     setSelectedBg(null);
     setResultUrl(null);
-    setMode("product");
+    setMode("ai-studio");
     setBgSource('preset');
-    setSelectedPresetBg('ai-generate');
+    setSelectedPresetBg(null);
     setCustomBgBase64(null);
     setPresetBgLoading(null);
   };
 
-  // 選擇預設背景 → fetch URL → 轉 base64
+  // ─── 切換模式時清除子選項 state ──────────────────────────────────────────────
+
+  const handleModeChange = (newMode: ProcessMode) => {
+    setMode(newMode);
+    setSelectedBg(null);
+    setBgSource('preset');
+    setSelectedPresetBg(null);
+    setCustomBgBase64(null);
+    setPresetBgLoading(null);
+  };
+
+  // ─── 預設背景選擇（real-bg 模式）────────────────────────────────────────────
+
   const handleSelectPresetBg = useCallback(async (bgId: PresetBgId) => {
     setBgSource('preset');
     setSelectedPresetBg(bgId);
     const preset = PRESET_BACKGROUNDS.find(b => b.id === bgId);
-    if (!preset || preset.url === null) {
-      // AI 生成模式，清除自訂背景
-      setCustomBgBase64(null);
-      return;
-    }
+    if (!preset) return;
     setPresetBgLoading(bgId);
     try {
       const res = await fetch(preset.url);
@@ -276,7 +354,8 @@ export default function ImageEditor() {
     }
   }, []);
 
-  // 上傳自訂背景
+  // ─── 上傳自訂背景（real-bg 模式）────────────────────────────────────────────
+
   const handleBgUpload = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
       toast.error("請上傳圖片檔案");
@@ -288,19 +367,36 @@ export default function ImageEditor() {
       const base64 = dataUrl.split(',')[1];
       setCustomBgBase64(base64);
       setBgSource('upload');
+      setSelectedPresetBg(null);
     };
     reader.readAsDataURL(file);
   }, []);
 
+  // ─── 按鈕 disabled 判斷 ──────────────────────────────────────────────────────
+
   const isGenerating = applyBgMutation.isPending;
+
+  const isGenerateDisabled = isGenerating || (
+    mode === "real-bg"
+      ? !customBgBase64
+      : !selectedBg
+  );
+
+  const generateDisabledHint =
+    mode === "real-bg" && !customBgBase64
+      ? "請先選擇或上傳背景照片"
+      : null;
+
+  const modeConfig = MODE_CONFIG[mode];
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen py-8 sm:py-12">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
         {/* Header */}
-        <div
-          className="text-center mb-10 sm:mb-14 animate-fade-in-up"
-        >
+        <div className="text-center mb-10 sm:mb-14 animate-fade-in-up">
           <div className="flex items-center justify-center gap-3 mb-4">
             <ImageIcon size={20} className="text-[oklch(0.72_0.08_75)]" />
             <h1 className="font-serif text-2xl sm:text-3xl tracking-[0.12em] text-[oklch(0.92_0.01_80)]">
@@ -351,289 +447,288 @@ export default function ImageEditor() {
           ))}
         </div>
 
-        {/* Main Content */}
-        {/* STEP 0: Upload */}
-          {step === 0 && (
+        {/* ── STEP 0: Upload ───────────────────────────────────────────────────── */}
+        {step === 0 && (
+          <div className="animate-fade-in-up">
             <div
-              className="animate-fade-in-up"
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`luxury-card rounded-sm cursor-pointer transition-all duration-300 ${
+                isDragging
+                  ? "border-[oklch(0.72_0.08_75/60%)] bg-[oklch(0.72_0.08_75/5%)]"
+                  : "hover:border-[oklch(0.72_0.08_75/30%)]"
+              }`}
+              style={{ minHeight: "320px", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`luxury-card rounded-sm cursor-pointer transition-all duration-300 ${
-                  isDragging
-                    ? "border-[oklch(0.72_0.08_75/60%)] bg-[oklch(0.72_0.08_75/5%)]"
-                    : "hover:border-[oklch(0.72_0.08_75/30%)]"
-                }`}
-                style={{ minHeight: "320px", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                <div className="text-center py-16 px-8">
-                  <div className="w-16 h-16 rounded-full border border-[oklch(0.72_0.08_75/30%)] flex items-center justify-center mx-auto mb-6">
-                    <Upload size={24} className="text-[oklch(0.72_0.08_75/60%)]" />
-                  </div>
-                  <h3 className="font-serif text-lg text-[oklch(0.82_0.01_80)] mb-3 tracking-[0.08em]">
-                    上傳商品圖片
-                  </h3>
-                  <p className="text-[oklch(0.45_0.02_60)] text-sm mb-2">
-                    拖曳或點擊上傳
-                  </p>
-                  <p className="text-[oklch(0.35_0.02_60)] text-xs">
-                    支援 JPG、PNG，最大 8MB
-                  </p>
+              <div className="text-center py-16 px-8">
+                <div className="w-16 h-16 rounded-full border border-[oklch(0.72_0.08_75/30%)] flex items-center justify-center mx-auto mb-6">
+                  <Upload size={24} className="text-[oklch(0.72_0.08_75/60%)]" />
                 </div>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileSelect(file);
-                }}
-              />
-
-              {/* Tips */}
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { icon: "✦", title: "AI 智慧去背", desc: "自動識別商品輪廓，精準去除背景" },
-                  { icon: "✦", title: "十款奢華背景", desc: "大理石、絲絨、光暈等精品質感背景" },
-                  { icon: "✦", title: "一鍵下載", desc: "高解析度輸出，直接用於社群發佈" },
-                ].map((tip) => (
-                  <div key={tip.title} className="luxury-card rounded-sm p-5">
-                    <span className="text-[oklch(0.72_0.08_75)] text-xs mb-2 block">{tip.icon}</span>
-                    <h4 className="text-[oklch(0.82_0.01_80)] text-sm mb-1 tracking-[0.05em]">{tip.title}</h4>
-                    <p className="text-[oklch(0.45_0.02_60)] text-xs leading-relaxed">{tip.desc}</p>
-                  </div>
-                ))}
+                <h3 className="font-serif text-lg text-[oklch(0.82_0.01_80)] mb-3 tracking-[0.08em]">
+                  上傳商品圖片
+                </h3>
+                <p className="text-[oklch(0.45_0.02_60)] text-sm mb-2">
+                  拖曳或點擊上傳
+                </p>
+                <p className="text-[oklch(0.35_0.02_60)] text-xs">
+                  支援 JPG、PNG，最大 8MB
+                </p>
               </div>
             </div>
-          )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileSelect(file);
+              }}
+            />
 
-          {/* STEP 1: Select Background */}
-          {step === 1 && originalImage && (
-            <div
-              className="animate-fade-in-up"
-            >
-              {/* 模式選擇 */}
-              <div className="mb-6">
-                <p className="text-xs tracking-[0.1em] text-[oklch(0.55_0.02_60)] mb-3">選擇處理模式</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setMode("product")}
-                    className={`p-4 rounded-sm border text-left transition-all duration-200 ${
-                      mode === "product"
-                        ? "border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
-                        : "border-[oklch(0.25_0.01_65/40%)] hover:border-[oklch(0.72_0.08_75/40%)]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-base">📦</span>
-                      <span className={`text-sm font-medium tracking-[0.05em] ${mode === "product" ? "text-[oklch(0.72_0.08_75)]" : "text-[oklch(0.75_0.01_80)]"}`}>
-                        商品棚拍模式
-                      </span>
-                      {mode === "product" && (
-                        <span className="ml-auto w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
-                          <Check size={9} className="text-[oklch(0.1_0.005_60)]" />
+            {/* Tips */}
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { icon: "✦", title: "AI 智慧去背", desc: "自動識別商品輪廓，精準去除背景" },
+                { icon: "✦", title: "三種模式", desc: "AI 棚拍 / 純去背 / 情境生活照自由切換" },
+                { icon: "✦", title: "一鍵下載", desc: "高解析度輸出，直接用於社群發佈" },
+              ].map((tip) => (
+                <div key={tip.title} className="luxury-card rounded-sm p-5">
+                  <span className="text-[oklch(0.72_0.08_75)] text-xs mb-2 block">{tip.icon}</span>
+                  <h4 className="text-[oklch(0.82_0.01_80)] text-sm mb-1 tracking-[0.05em]">{tip.title}</h4>
+                  <p className="text-[oklch(0.45_0.02_60)] text-xs leading-relaxed">{tip.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 1: Select Mode + Background ────────────────────────────────── */}
+        {step === 1 && originalImage && (
+          <div className="animate-fade-in-up">
+
+            {/* 三模式 Card 選擇 */}
+            <div className="mb-8">
+              <p className="text-xs tracking-[0.1em] text-[oklch(0.55_0.02_60)] mb-3">選擇處理模式</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {(Object.keys(MODE_CONFIG) as ProcessMode[]).map((m) => {
+                  const cfg = MODE_CONFIG[m];
+                  const isSelected = mode === m;
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => handleModeChange(m)}
+                      className={`relative p-4 rounded-sm border text-left transition-all duration-200 ${
+                        isSelected
+                          ? "ring-2 ring-[oklch(0.72_0.08_75)] border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
+                          : "border-[oklch(0.25_0.01_65/40%)] hover:border-[oklch(0.72_0.08_75/40%)]"
+                      }`}
+                    >
+                      {/* 右上角打勾 */}
+                      {isSelected && (
+                        <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                          <Check size={10} className="text-[oklch(0.1_0.005_60)]" />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xl">{cfg.emoji}</span>
+                        <span className={`text-sm font-medium tracking-[0.04em] ${isSelected ? "text-[oklch(0.72_0.08_75)]" : "text-[oklch(0.75_0.01_80)]"}`}>
+                          {cfg.title}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[oklch(0.45_0.02_60)] leading-relaxed mb-2">
+                        {cfg.desc}
+                      </p>
+                      {cfg.badge && (
+                        <span className="inline-block text-[9px] tracking-[0.06em] px-1.5 py-0.5 rounded-sm border border-[oklch(0.72_0.08_75/40%)] text-[oklch(0.72_0.08_75/80%)] bg-[oklch(0.72_0.08_75/5%)]">
+                          {cfg.badge}
                         </span>
                       )}
-                    </div>
-                    <p className="text-[10px] text-[oklch(0.45_0.02_60)] leading-relaxed">
-                      保留商品原貌，包裝文字、中文標示完整保留
-                    </p>
-                  </button>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                  <button
-                    onClick={() => setMode("lifestyle")}
-                    className={`p-4 rounded-sm border text-left transition-all duration-200 ${
-                      mode === "lifestyle"
-                        ? "border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
-                        : "border-[oklch(0.25_0.01_65/40%)] hover:border-[oklch(0.72_0.08_75/40%)]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-base">🛍️</span>
-                      <span className={`text-sm font-medium tracking-[0.05em] ${mode === "lifestyle" ? "text-[oklch(0.72_0.08_75)]" : "text-[oklch(0.75_0.01_80)]"}`}>
-                        情境生活照模式
-                      </span>
-                      {mode === "lifestyle" && (
-                        <span className="ml-auto w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
-                          <Check size={9} className="text-[oklch(0.1_0.005_60)]" />
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-[oklch(0.45_0.02_60)] leading-relaxed">
-                      人物帶包包、情境照，AI 重新生成更自然
-                    </p>
-                  </button>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* 原始圖片預覽 */}
+              <div className="lg:col-span-2">
+                <div className="luxury-card rounded-sm p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)]">原始圖片</h3>
+                    <button
+                      onClick={handleReset}
+                      className="text-[oklch(0.45_0.02_60)] hover:text-[oklch(0.72_0.08_75)] transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="rounded-sm overflow-hidden bg-[oklch(0.12_0.005_60)] aspect-square flex items-center justify-center">
+                    <img
+                      src={`data:${originalMime};base64,${originalImage}`}
+                      alt="原始圖片"
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                {/* Original Preview */}
-                <div className="lg:col-span-2">
-                  <div className="luxury-card rounded-sm p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)]">原始圖片</h3>
-                      <button
-                        onClick={handleReset}
-                        className="text-[oklch(0.45_0.02_60)] hover:text-[oklch(0.72_0.08_75)] transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <div className="rounded-sm overflow-hidden bg-[oklch(0.12_0.005_60)] aspect-square flex items-center justify-center">
-                      <img
-                        src={`data:${originalMime};base64,${originalImage}`}
-                        alt="原始圖片"
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    </div>
-                  </div>
-                </div>
+              {/* 右側：模式對應子選項 */}
+              <div className="lg:col-span-3 space-y-5">
 
-                {/* Background Selection */}
-                <div className="lg:col-span-3">
-                  <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-4">選擇奢華背景</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {BACKGROUNDS.map((bg) => (
-                      <button
-                        key={bg.id}
-                        onClick={() => setSelectedBg(bg.id)}
-                        className={`relative rounded-sm overflow-hidden border-2 transition-all duration-300 group ${
-                          selectedBg === bg.id
-                            ? "border-[oklch(0.72_0.08_75)]"
-                            : "border-transparent hover:border-[oklch(0.72_0.08_75/40%)]"
-                        }`}
-                      >
-                        <div className="aspect-square">
-                          <img
-                            src={bg.preview}
-                            alt={bg.label}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-[oklch(0.08_0.005_60/90%)] via-transparent to-transparent" />
-                        <div className="absolute bottom-0 left-0 right-0 p-2">
-                          <p className="text-[oklch(0.92_0.01_80)] text-[10px] font-medium tracking-[0.05em]">
-                            {bg.label}
-                          </p>
-                        </div>
-                        {selectedBg === bg.id && (
-                          <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
-                            <Check size={10} className="text-[oklch(0.1_0.005_60)]" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 背景選擇器（只在 product 模式顯示）*/}
-                  {mode === "product" && (
-                    <div className="mt-5">
-                      <p className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-3">背景選擇</p>
-                      <div className="grid grid-cols-5 gap-2">
-                        {PRESET_BACKGROUNDS.map((preset) => {
-                          const isSelected = bgSource === 'preset' && selectedPresetBg === preset.id;
-                          const isLoading = presetBgLoading === preset.id;
-                          return (
-                            <button
-                              key={preset.id}
-                              onClick={() => handleSelectPresetBg(preset.id)}
-                              disabled={isLoading}
-                              className={`relative aspect-square rounded-sm overflow-hidden border-2 transition-all duration-200 ${
-                                isSelected
-                                  ? "ring-2 ring-[oklch(0.72_0.08_75)] border-[oklch(0.72_0.08_75)]"
-                                  : "border-transparent hover:border-[oklch(0.72_0.08_75/40%)]"
-                              }`}
-                            >
-                              {preset.url ? (
-                                <img
-                                  src={preset.url}
-                                  alt={preset.label}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-[oklch(0.22_0.02_270)] to-[oklch(0.15_0.01_270)] flex items-center justify-center">
-                                  <Sparkles size={14} className="text-[oklch(0.72_0.08_75)]" />
-                                </div>
-                              )}
-                              {/* 載入 spinner */}
-                              {isLoading && (
-                                <div className="absolute inset-0 bg-[oklch(0.1_0.005_60/70%)] flex items-center justify-center">
-                                  <Loader2 size={12} className="animate-spin text-[oklch(0.72_0.08_75)]" />
-                                </div>
-                              )}
-                              {/* 選中打勾 */}
-                              {isSelected && !isLoading && (
-                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
-                                  <Check size={8} className="text-[oklch(0.1_0.005_60)]" />
-                                </div>
-                              )}
-                              {/* 標籤 */}
-                              <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
-                                <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
-                                  {preset.label}
-                                </p>
-                              </div>
-                            </button>
-                          );
-                        })}
-
-                        {/* 上傳自訂背景按鈕 */}
+                {/* ai-studio / lifestyle：背景風格選擇器 */}
+                {(mode === "ai-studio" || mode === "lifestyle") && (
+                  <div>
+                    <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-4">
+                      選擇背景風格
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {BACKGROUNDS.map((bg) => (
                         <button
-                          onClick={() => bgUploadRef.current?.click()}
-                          className={`relative aspect-square rounded-sm border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center gap-1 overflow-hidden ${
-                            bgSource === 'upload' && customBgBase64
-                              ? "border-[oklch(0.72_0.08_75)] ring-2 ring-[oklch(0.72_0.08_75)]"
-                              : "border-[oklch(0.3_0.01_65/50%)] hover:border-[oklch(0.72_0.08_75/50%)]"
+                          key={bg.id}
+                          onClick={() => setSelectedBg(bg.id)}
+                          className={`relative rounded-sm overflow-hidden border-2 transition-all duration-300 group ${
+                            selectedBg === bg.id
+                              ? "border-[oklch(0.72_0.08_75)]"
+                              : "border-transparent hover:border-[oklch(0.72_0.08_75/40%)]"
                           }`}
                         >
-                          {bgSource === 'upload' && customBgBase64 ? (
-                            <>
-                              <img
-                                src={`data:image/jpeg;base64,${customBgBase64}`}
-                                alt="自訂背景"
-                                className="absolute inset-0 w-full h-full object-cover rounded-sm"
-                              />
-                              <div className="absolute inset-0 bg-[oklch(0.08_0.005_60/50%)] rounded-sm" />
-                              <Check size={14} className="relative text-[oklch(0.72_0.08_75)] z-10" />
-                            </>
-                          ) : (
-                            <>
-                              <Plus size={14} className="text-[oklch(0.45_0.02_60)]" />
-                            </>
-                          )}
-                          <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
-                            <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
-                              上傳背景
+                          <div className="aspect-square">
+                            <img
+                              src={bg.preview}
+                              alt={bg.label}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-[oklch(0.08_0.005_60/90%)] via-transparent to-transparent" />
+                          <div className="absolute bottom-0 left-0 right-0 p-2">
+                            <p className="text-[oklch(0.92_0.01_80)] text-[10px] font-medium tracking-[0.05em]">
+                              {bg.label}
                             </p>
                           </div>
+                          {selectedBg === bg.id && (
+                            <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                              <Check size={10} className="text-[oklch(0.1_0.005_60)]" />
+                            </div>
+                          )}
                         </button>
-                      </div>
-                      <input
-                        ref={bgUploadRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleBgUpload(file);
-                          e.target.value = '';
-                        }}
-                      />
+                      ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* Generate Button */}
-                  <div className="mt-6">
-                    {/* 原色鎖定 Color Lock */}
+                {/* real-bg：背景照片選擇器 */}
+                {mode === "real-bg" && (
+                  <div>
+                    <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-4">
+                      選擇背景照片
+                    </h3>
+                    <div className="grid grid-cols-5 gap-2">
+                      {/* 預設縮圖 */}
+                      {PRESET_BACKGROUNDS.map((preset) => {
+                        const isSelected = bgSource === 'preset' && selectedPresetBg === preset.id;
+                        const isLoading = presetBgLoading === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            onClick={() => handleSelectPresetBg(preset.id)}
+                            disabled={isLoading}
+                            className={`relative aspect-square rounded-sm overflow-hidden border-2 transition-all duration-200 ${
+                              isSelected
+                                ? "ring-2 ring-[oklch(0.72_0.08_75)] border-[oklch(0.72_0.08_75)]"
+                                : "border-transparent hover:border-[oklch(0.72_0.08_75/40%)]"
+                            }`}
+                          >
+                            <img
+                              src={preset.url}
+                              alt={preset.label}
+                              className="w-full h-full object-cover"
+                            />
+                            {/* 載入 spinner */}
+                            {isLoading && (
+                              <div className="absolute inset-0 bg-[oklch(0.1_0.005_60/70%)] flex items-center justify-center">
+                                <Loader2 size={12} className="animate-spin text-[oklch(0.72_0.08_75)]" />
+                              </div>
+                            )}
+                            {/* 選中打勾 */}
+                            {isSelected && !isLoading && (
+                              <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                                <Check size={8} className="text-[oklch(0.1_0.005_60)]" />
+                              </div>
+                            )}
+                            {/* 標籤 */}
+                            <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
+                              <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
+                                {preset.label}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      {/* 上傳自訂背景 */}
+                      <button
+                        onClick={() => bgUploadRef.current?.click()}
+                        className={`relative aspect-square rounded-sm border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center gap-1 overflow-hidden ${
+                          bgSource === 'upload' && customBgBase64
+                            ? "border-[oklch(0.72_0.08_75)] ring-2 ring-[oklch(0.72_0.08_75)]"
+                            : "border-[oklch(0.3_0.01_65/50%)] hover:border-[oklch(0.72_0.08_75/50%)]"
+                        }`}
+                      >
+                        {bgSource === 'upload' && customBgBase64 ? (
+                          <>
+                            <img
+                              src={`data:image/jpeg;base64,${customBgBase64}`}
+                              alt="自訂背景"
+                              className="absolute inset-0 w-full h-full object-cover rounded-sm"
+                            />
+                            <div className="absolute inset-0 bg-[oklch(0.08_0.005_60/50%)] rounded-sm" />
+                            <Check size={14} className="relative text-[oklch(0.72_0.08_75)] z-10" />
+                          </>
+                        ) : (
+                          <Plus size={14} className="text-[oklch(0.45_0.02_60)]" />
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
+                          <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
+                            上傳背景
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                    <input
+                      ref={bgUploadRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleBgUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    {/* 未選背景提示 */}
+                    {!customBgBase64 && (
+                      <p className="text-[oklch(0.5_0.02_60)] text-[11px] mt-2">
+                        請先選擇或上傳背景照片
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Generate 區塊 */}
+                <div>
+                  {/* 原色鎖定（只在 ai-studio / lifestyle 顯示，real-bg 不需要） */}
+                  {mode !== "real-bg" && (
                     <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                          </svg>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-white/90">原色鎖定</p>
@@ -648,105 +743,114 @@ export default function ImageEditor() {
                         <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${colorLock ? 'translate-x-5' : ''}`} />
                       </button>
                     </div>
-                    <button
-                      onClick={handleGenerate}
-                      disabled={!selectedBg || isGenerating}
-                      className={`w-full py-4 rounded-sm flex items-center justify-center gap-3 transition-all duration-300 tracking-[0.12em] text-sm ${
-                        selectedBg && !isGenerating
-                          ? "bg-[oklch(0.72_0.08_75)] text-[oklch(0.1_0.005_60)] hover:bg-[oklch(0.78_0.08_75)]"
-                          : "bg-[oklch(0.18_0.005_60)] text-[oklch(0.4_0.02_60)] cursor-not-allowed"
-                      }`}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          {mode === "product" ? "BGSWAP AI 合成中..." : "Imagen 3 AI 生成中..."}
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles size={16} />
-                          {mode === "product" ? "開始背景合成（保留文字）" : "開始 AI 重新生成"}
-                          <ChevronRight size={16} />
-                        </>
-                      )}
-                    </button>
-                    {isGenerating && (
-                      <p className="text-center text-[oklch(0.45_0.02_60)] text-xs mt-3">
-                        {mode === "product"
-                          ? "AI 正在去背並合成奢華背景，文字標示完整保留，約需 20-40 秒..."
-                          : "Imagen 3 正在分析情境並重新生成，約需 20-40 秒..."}
-                      </p>
+                  )}
+
+                  {/* 按鈕 */}
+                  <button
+                    onClick={handleGenerate}
+                    disabled={isGenerateDisabled}
+                    className={`w-full py-4 rounded-sm flex items-center justify-center gap-3 transition-all duration-300 tracking-[0.12em] text-sm ${
+                      !isGenerateDisabled
+                        ? "bg-[oklch(0.72_0.08_75)] text-[oklch(0.1_0.005_60)] hover:bg-[oklch(0.78_0.08_75)]"
+                        : "bg-[oklch(0.18_0.005_60)] text-[oklch(0.4_0.02_60)] cursor-not-allowed"
+                    }`}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        {modeConfig.loadingLabel}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        {modeConfig.btnLabel}
+                        <ChevronRight size={16} />
+                      </>
                     )}
-                  </div>
+                  </button>
+
+                  {/* disabled 提示 */}
+                  {!isGenerating && generateDisabledHint && (
+                    <p className="text-center text-[oklch(0.5_0.02_60)] text-xs mt-2">
+                      {generateDisabledHint}
+                    </p>
+                  )}
+
+                  {/* 生成中說明 */}
+                  {isGenerating && (
+                    <p className="text-center text-[oklch(0.45_0.02_60)] text-xs mt-3">
+                      {modeConfig.loadingDesc}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* STEP 2: Result */}
-          {step === 2 && resultUrl && (
-            <div
-              className="animate-fade-in"
-            >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Before */}
-                <div className="luxury-card rounded-sm p-4">
-                  <h3 className="text-xs tracking-[0.1em] text-[oklch(0.55_0.02_60)] mb-3">原始圖片</h3>
-                  <div className="rounded-sm overflow-hidden bg-[oklch(0.12_0.005_60)] aspect-square flex items-center justify-center">
-                    <img
-                      src={`data:${originalMime};base64,${originalImage}`}
-                      alt="原始"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  </div>
-                </div>
-
-                {/* After */}
-                <div className="luxury-card rounded-sm p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)]">
-                      合成結果
-                    </h3>
-                    <span className="text-[9px] tracking-[0.1em] text-[oklch(0.72_0.08_75/60%)] border border-[oklch(0.72_0.08_75/20%)] px-2 py-0.5 rounded-sm">
-                      {BACKGROUNDS.find(b => b.id === selectedBg)?.label}
-                    </span>
-                  </div>
-                  <div className="rounded-sm overflow-hidden aspect-square">
-                    <img
-                      src={resultUrl}
-                      alt="合成結果"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+        {/* ── STEP 2: Result ───────────────────────────────────────────────────── */}
+        {step === 2 && resultUrl && (
+          <div className="animate-fade-in">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Before */}
+              <div className="luxury-card rounded-sm p-4">
+                <h3 className="text-xs tracking-[0.1em] text-[oklch(0.55_0.02_60)] mb-3">原始圖片</h3>
+                <div className="rounded-sm overflow-hidden bg-[oklch(0.12_0.005_60)] aspect-square flex items-center justify-center">
+                  <img
+                    src={`data:${originalMime};base64,${originalImage}`}
+                    alt="原始"
+                    className="max-w-full max-h-full object-contain"
+                  />
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 mt-6">
-                <button
-                  onClick={handleDownload}
-                  className="flex-1 py-4 bg-[oklch(0.72_0.08_75)] text-[oklch(0.1_0.005_60)] rounded-sm flex items-center justify-center gap-2 hover:bg-[oklch(0.78_0.08_75)] transition-colors tracking-[0.1em] text-sm"
-                >
-                  <Download size={16} />
-                  下載圖片
-                </button>
-                <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 py-4 luxury-card rounded-sm flex items-center justify-center gap-2 hover:border-[oklch(0.72_0.08_75/40%)] transition-colors tracking-[0.1em] text-sm text-[oklch(0.72_0.08_75)]"
-                >
-                  <RefreshCw size={16} />
-                  換個背景
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="flex-1 py-4 luxury-card rounded-sm flex items-center justify-center gap-2 hover:border-[oklch(0.72_0.08_75/40%)] transition-colors tracking-[0.1em] text-sm text-[oklch(0.55_0.02_60)]"
-                >
-                  <Upload size={16} />
-                  重新上傳
-                </button>
+              {/* After */}
+              <div className="luxury-card rounded-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)]">
+                    合成結果
+                  </h3>
+                  <span className="text-[9px] tracking-[0.1em] text-[oklch(0.72_0.08_75/60%)] border border-[oklch(0.72_0.08_75/20%)] px-2 py-0.5 rounded-sm">
+                    {MODE_CONFIG[mode].emoji} {MODE_CONFIG[mode].title}
+                  </span>
+                </div>
+                <div className="rounded-sm overflow-hidden aspect-square">
+                  <img
+                    src={resultUrl}
+                    alt="合成結果"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               </div>
             </div>
-          )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 mt-6">
+              <button
+                onClick={handleDownload}
+                className="flex-1 py-4 bg-[oklch(0.72_0.08_75)] text-[oklch(0.1_0.005_60)] rounded-sm flex items-center justify-center gap-2 hover:bg-[oklch(0.78_0.08_75)] transition-colors tracking-[0.1em] text-sm"
+              >
+                <Download size={16} />
+                下載圖片
+              </button>
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 py-4 luxury-card rounded-sm flex items-center justify-center gap-2 hover:border-[oklch(0.72_0.08_75/40%)] transition-colors tracking-[0.1em] text-sm text-[oklch(0.72_0.08_75)]"
+              >
+                <RefreshCw size={16} />
+                換個背景
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex-1 py-4 luxury-card rounded-sm flex items-center justify-center gap-2 hover:border-[oklch(0.72_0.08_75/40%)] transition-colors tracking-[0.1em] text-sm text-[oklch(0.55_0.02_60)]"
+              >
+                <Upload size={16} />
+                重新上傳
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
