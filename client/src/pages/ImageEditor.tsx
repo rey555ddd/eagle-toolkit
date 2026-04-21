@@ -78,16 +78,16 @@ const BACKGROUNDS = [
 
 // 純去背模式的預設背景庫（不含 ai-generate 特殊項）
 const PRESET_BACKGROUNDS = [
-  { id: 'marble-white', label: '白大理石', url: 'https://images.unsplash.com/photo-1615876234886-fd9a39fda97f?w=1024&q=80&fit=crop' },
-  { id: 'marble-grey',  label: '灰大理石', url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1024&q=80&fit=crop' },
-  { id: 'wood-light',   label: '淺木桌',   url: 'https://images.unsplash.com/photo-1528323273322-d81458248d40?w=1024&q=80&fit=crop' },
-  { id: 'wood-dark',    label: '深木桌',   url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1024&q=80&fit=crop' },
-  { id: 'concrete',     label: '水泥',     url: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=1024&q=80&fit=crop' },
-  { id: 'linen',        label: '亞麻布',   url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
-  { id: 'black-studio', label: '黑色棚',   url: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1024&q=80&fit=crop' },
-  { id: 'white-studio', label: '白色棚',   url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
-  { id: 'pastel-pink',  label: '粉色系',   url: 'https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=1024&q=80&fit=crop' },
-  { id: 'dark-gradient',label: '深色漸層', url: 'https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=1024&q=80&fit=crop' },
+  { id: 'marble-white', label: '白大理石',   url: '/backgrounds/marble-white.jpg' },
+  { id: 'marble-grey',  label: '黑金大理石', url: '/backgrounds/marble-black.jpg' },
+  { id: 'wood-light',   label: '淺木桌',     url: '/backgrounds/wood-light.jpg' },
+  { id: 'wood-dark',    label: '深木桌',     url: '/backgrounds/wood-dark.jpg' },
+  { id: 'concrete',     label: '水泥',       url: '/backgrounds/concrete.jpg' },
+  { id: 'linen',        label: '亞麻布',     url: '/backgrounds/linen.jpg' },
+  { id: 'black-studio', label: '黑色棚',     url: '/backgrounds/black-studio.jpg' },
+  { id: 'white-studio', label: '白色棚',     url: '/backgrounds/white-studio.jpg' },
+  { id: 'pastel-pink',  label: '粉色系',     url: '/backgrounds/pastel-pink.jpg' },
+  { id: 'dark-gradient',label: '深色漸層',   url: '/backgrounds/dark-gradient.jpg' },
 ] as const;
 
 type PresetBgId = typeof PRESET_BACKGROUNDS[number]['id'];
