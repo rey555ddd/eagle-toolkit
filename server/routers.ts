@@ -357,6 +357,7 @@ ${input.originalText}
           // "lifestyle" = 情境生活照模式（AI 重新生成，原有邏輯）
           mode: z.enum(["product", "lifestyle"]).default("lifestyle"),
           colorLock: z.boolean().default(false),
+          customBackgroundBase64: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -378,10 +379,24 @@ ${input.originalText}
         let usedFallback = false;
 
         if (input.mode === "product") {
-          // ── 商品棚拍模式：remove.bg 去背 + Imagen 3 純背景 ──
+          // ── 商品棚拍模式：remove.bg 去背 + 背景（自訂或 Imagen 3 生成）──
           // 前端用 Canvas 合成，原始商品像素完整保留，文字 100% 清晰
           const removeBgKey = ENV.removeBgApiKey;
           if (!removeBgKey) throw new Error("REMOVE_BG_API_KEY 未設定，請在 Cloudflare Pages 環境變數中配置");
+
+          if (input.customBackgroundBase64) {
+            // 有自訂背景：只去背，不呼叫 Imagen 3
+            const cutoutBase64 = await removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType);
+            return {
+              imageBase64: null,
+              cutoutBase64,
+              backgroundBase64: input.customBackgroundBase64,
+              useCanvas: true,
+              backgroundStyle: input.backgroundStyle,
+              usedFallback: false,
+              message: "✨ 去背完成，使用自訂背景合成中",
+            };
+          }
 
           const [cutoutBase64, backgroundBase64] = await Promise.all([
             removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType),

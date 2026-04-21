@@ -6,7 +6,7 @@
 import { useState, useCallback, useRef } from "react";
 import {
   ImageIcon, Upload, Download, Sparkles, Check,
-  RefreshCw, ChevronRight, Loader2, X
+  RefreshCw, ChevronRight, Loader2, X, Plus
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -74,6 +74,22 @@ const BACKGROUNDS = [
   },
 ];
 
+// 預設背景庫（商品棚拍模式用）
+const PRESET_BACKGROUNDS = [
+  { id: 'marble-white', label: '白大理石', url: 'https://images.unsplash.com/photo-1615876234886-fd9a39fda97f?w=1024&q=80&fit=crop' },
+  { id: 'marble-grey', label: '灰大理石', url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1024&q=80&fit=crop' },
+  { id: 'wood-light', label: '淺木桌', url: 'https://images.unsplash.com/photo-1528323273322-d81458248d40?w=1024&q=80&fit=crop' },
+  { id: 'wood-dark', label: '深木桌', url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1024&q=80&fit=crop' },
+  { id: 'concrete', label: '水泥', url: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=1024&q=80&fit=crop' },
+  { id: 'linen', label: '亞麻布', url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
+  { id: 'black-studio', label: '黑色棚', url: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1024&q=80&fit=crop' },
+  { id: 'white-studio', label: '白色棚', url: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1024&q=80&fit=crop' },
+  { id: 'pastel-pink', label: '粉色系', url: 'https://images.unsplash.com/photo-1519682337058-a94d519337bc?w=1024&q=80&fit=crop' },
+  { id: 'ai-generate', label: 'AI生成', url: null },
+] as const;
+
+type PresetBgId = typeof PRESET_BACKGROUNDS[number]['id'];
+
 const STEPS = ["上傳商品圖", "選擇背景", "生成下載"];
 
 export default function ImageEditor() {
@@ -86,6 +102,14 @@ export default function ImageEditor() {
   const [colorLock, setColorLock] = useState(false);
   const [mode, setMode] = useState<"product" | "lifestyle">("product");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 背景選擇器 state（商品棚拍模式）
+  // bgSource: 'preset' = 選了預設庫其中一張；'upload' = 上傳了自訂背景
+  const [bgSource, setBgSource] = useState<'preset' | 'upload'>('preset');
+  const [selectedPresetBg, setSelectedPresetBg] = useState<PresetBgId>('ai-generate');
+  const [customBgBase64, setCustomBgBase64] = useState<string | null>(null);
+  const [presetBgLoading, setPresetBgLoading] = useState<string | null>(null); // 正在載入的預設背景 id
+  const bgUploadRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -194,6 +218,8 @@ export default function ImageEditor() {
       backgroundStyle: selectedBg as Parameters<typeof applyBgMutation.mutate>[0]["backgroundStyle"],
       colorLock,
       mode,
+      // 有自訂背景（預設庫非AI生成 或 上傳）才傳；選 AI生成 時傳 undefined
+      customBackgroundBase64: (bgSource === 'preset' && selectedPresetBg === 'ai-generate') ? undefined : (customBgBase64 ?? undefined),
     });
   };
 
@@ -216,7 +242,55 @@ export default function ImageEditor() {
     setSelectedBg(null);
     setResultUrl(null);
     setMode("product");
+    setBgSource('preset');
+    setSelectedPresetBg('ai-generate');
+    setCustomBgBase64(null);
+    setPresetBgLoading(null);
   };
+
+  // 選擇預設背景 → fetch URL → 轉 base64
+  const handleSelectPresetBg = useCallback(async (bgId: PresetBgId) => {
+    setBgSource('preset');
+    setSelectedPresetBg(bgId);
+    const preset = PRESET_BACKGROUNDS.find(b => b.id === bgId);
+    if (!preset || preset.url === null) {
+      // AI 生成模式，清除自訂背景
+      setCustomBgBase64(null);
+      return;
+    }
+    setPresetBgLoading(bgId);
+    try {
+      const res = await fetch(preset.url);
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        const base64 = dataUrl.split(',')[1];
+        setCustomBgBase64(base64);
+        setPresetBgLoading(null);
+      };
+      reader.readAsDataURL(blob);
+    } catch {
+      toast.error("背景圖載入失敗，請重試");
+      setPresetBgLoading(null);
+    }
+  }, []);
+
+  // 上傳自訂背景
+  const handleBgUpload = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error("請上傳圖片檔案");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const base64 = dataUrl.split(',')[1];
+      setCustomBgBase64(base64);
+      setBgSource('upload');
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   const isGenerating = applyBgMutation.isPending;
 
@@ -455,6 +529,103 @@ export default function ImageEditor() {
                       </button>
                     ))}
                   </div>
+
+                  {/* 背景選擇器（只在 product 模式顯示）*/}
+                  {mode === "product" && (
+                    <div className="mt-5">
+                      <p className="text-xs tracking-[0.1em] text-[oklch(0.72_0.08_75)] mb-3">背景選擇</p>
+                      <div className="grid grid-cols-5 gap-2">
+                        {PRESET_BACKGROUNDS.map((preset) => {
+                          const isSelected = bgSource === 'preset' && selectedPresetBg === preset.id;
+                          const isLoading = presetBgLoading === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              onClick={() => handleSelectPresetBg(preset.id)}
+                              disabled={isLoading}
+                              className={`relative aspect-square rounded-sm overflow-hidden border-2 transition-all duration-200 ${
+                                isSelected
+                                  ? "ring-2 ring-[oklch(0.72_0.08_75)] border-[oklch(0.72_0.08_75)]"
+                                  : "border-transparent hover:border-[oklch(0.72_0.08_75/40%)]"
+                              }`}
+                            >
+                              {preset.url ? (
+                                <img
+                                  src={preset.url}
+                                  alt={preset.label}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-[oklch(0.22_0.02_270)] to-[oklch(0.15_0.01_270)] flex items-center justify-center">
+                                  <Sparkles size={14} className="text-[oklch(0.72_0.08_75)]" />
+                                </div>
+                              )}
+                              {/* 載入 spinner */}
+                              {isLoading && (
+                                <div className="absolute inset-0 bg-[oklch(0.1_0.005_60/70%)] flex items-center justify-center">
+                                  <Loader2 size={12} className="animate-spin text-[oklch(0.72_0.08_75)]" />
+                                </div>
+                              )}
+                              {/* 選中打勾 */}
+                              {isSelected && !isLoading && (
+                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                                  <Check size={8} className="text-[oklch(0.1_0.005_60)]" />
+                                </div>
+                              )}
+                              {/* 標籤 */}
+                              <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
+                                <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
+                                  {preset.label}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+
+                        {/* 上傳自訂背景按鈕 */}
+                        <button
+                          onClick={() => bgUploadRef.current?.click()}
+                          className={`relative aspect-square rounded-sm border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center gap-1 overflow-hidden ${
+                            bgSource === 'upload' && customBgBase64
+                              ? "border-[oklch(0.72_0.08_75)] ring-2 ring-[oklch(0.72_0.08_75)]"
+                              : "border-[oklch(0.3_0.01_65/50%)] hover:border-[oklch(0.72_0.08_75/50%)]"
+                          }`}
+                        >
+                          {bgSource === 'upload' && customBgBase64 ? (
+                            <>
+                              <img
+                                src={`data:image/jpeg;base64,${customBgBase64}`}
+                                alt="自訂背景"
+                                className="absolute inset-0 w-full h-full object-cover rounded-sm"
+                              />
+                              <div className="absolute inset-0 bg-[oklch(0.08_0.005_60/50%)] rounded-sm" />
+                              <Check size={14} className="relative text-[oklch(0.72_0.08_75)] z-10" />
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={14} className="text-[oklch(0.45_0.02_60)]" />
+                            </>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
+                            <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
+                              上傳背景
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                      <input
+                        ref={bgUploadRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleBgUpload(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </div>
+                  )}
 
                   {/* Generate Button */}
                   <div className="mt-6">
