@@ -335,6 +335,19 @@ ${input.originalText}
         };
       }),
 
+    generateBackground: publicProcedure
+      .input(
+        z.object({
+          prompt: z.string().min(1),
+          backgroundStyle: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const fullPrompt = `${input.prompt}, professional product photography background, ultra realistic, 8K, no people, no products`;
+        const backgroundBase64 = await generateBackgroundOnly(fullPrompt);
+        return { backgroundBase64 };
+      }),
+
     applyLuxuryBackground: publicProcedure
       .input(
         z.object({

@@ -87,7 +87,6 @@ const PRESET_BACKGROUNDS = [
   { id: 'black-studio', label: '黑色棚',     url: '/backgrounds/black-studio.jpg' },
   { id: 'white-studio', label: '白色棚',     url: '/backgrounds/white-studio.jpg' },
   { id: 'pastel-pink',  label: '粉色系',     url: '/backgrounds/pastel-pink.jpg' },
-  { id: 'dark-gradient',label: '深色漸層',   url: '/backgrounds/dark-gradient.jpg' },
 ] as const;
 
 type PresetBgId = typeof PRESET_BACKGROUNDS[number]['id'];
@@ -108,16 +107,16 @@ const MODE_CONFIG: Record<ProcessMode, {
   "ai-studio": {
     emoji: "🎨",
     title: "AI 棚拍模式",
-    desc: "AI 生成奢華背景，去背技術保留商品外觀",
+    desc: "AI 生成創意背景，有設計感但帶 AI 風格",
     btnLabel: "開始 AI 棚拍合成",
     loadingLabel: "去背 + AI 生成背景中...",
-    loadingDesc: "AI 正在去背並生成奢華背景，文字標示完整保留，約需 20-40 秒...",
+    loadingDesc: "AI 正在去背並生成奢華背景，約需 20-40 秒...",
   },
   "real-bg": {
     emoji: "🖼️",
     title: "純去背模式",
-    desc: "選擇或上傳真實照片背景，文字保留率最高",
-    badge: "⭐ 文字保留率最高",
+    desc: "真實照片背景，最自然不像 AI，速度最快、費用最低",
+    badge: "⚡ 最快最省",
     btnLabel: "開始去背合成",
     loadingLabel: "去背合成中...",
     loadingDesc: "AI 正在去背並合成您選擇的背景，約需 10-20 秒...",
@@ -125,7 +124,7 @@ const MODE_CONFIG: Record<ProcessMode, {
   "lifestyle": {
     emoji: "✨",
     title: "精品棚拍模式",
-    desc: "AI 完整重新生成，適合無文字商品（精品包、飾品、造型瓶）",
+    desc: "AI 完整重新生成，戲劇感最強，適合精品包、飾品、造型商品",
     btnLabel: "開始 AI 精品棚拍",
     loadingLabel: "Imagen 3 精品棚拍生成中...",
     loadingDesc: "Imagen 3 正在重新生成精品棚拍效果，約需 20-40 秒...",
@@ -148,11 +147,15 @@ export default function ImageEditor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 純去背模式的背景選擇 state
-  const [bgSource, setBgSource] = useState<'preset' | 'upload'>('preset');
+  const [bgSource, setBgSource] = useState<'preset' | 'upload' | 'custom-prompt'>('preset');
   const [selectedPresetBg, setSelectedPresetBg] = useState<PresetBgId | null>(null);
   const [customBgBase64, setCustomBgBase64] = useState<string | null>(null);
   const [presetBgLoading, setPresetBgLoading] = useState<string | null>(null);
   const bgUploadRef = useRef<HTMLInputElement>(null);
+
+  // 自定義背景生成 state
+  const [customPromptText, setCustomPromptText] = useState('');
+  const [generatedCustomBgBase64, setGeneratedCustomBgBase64] = useState<string | null>(null);
 
   // ─── 上傳邏輯 ───────────────────────────────────────────────────────────────
 
@@ -251,6 +254,27 @@ export default function ImageEditor() {
     },
   });
 
+  // ─── 自定義背景生成 mutation ─────────────────────────────────────────────────
+
+  const generateBgMutation = trpc.imageProcessor.generateBackground.useMutation({
+    onSuccess: (data) => {
+      setGeneratedCustomBgBase64(data.backgroundBase64);
+      setCustomBgBase64(data.backgroundBase64);
+      toast.success("✨ 自定義背景生成完成！");
+    },
+    onError: (err) => {
+      toast.error("背景生成失敗：" + err.message);
+    },
+  });
+
+  const handleGenerateCustomBg = () => {
+    if (!customPromptText.trim()) {
+      toast.error("請輸入背景描述");
+      return;
+    }
+    generateBgMutation.mutate({ prompt: customPromptText.trim() });
+  };
+
   // ─── 生成觸發 ────────────────────────────────────────────────────────────────
 
   const handleGenerate = () => {
@@ -316,6 +340,8 @@ export default function ImageEditor() {
     setSelectedPresetBg(null);
     setCustomBgBase64(null);
     setPresetBgLoading(null);
+    setCustomPromptText('');
+    setGeneratedCustomBgBase64(null);
   };
 
   // ─── 切換模式時清除子選項 state ──────────────────────────────────────────────
@@ -327,6 +353,8 @@ export default function ImageEditor() {
     setSelectedPresetBg(null);
     setCustomBgBase64(null);
     setPresetBgLoading(null);
+    setCustomPromptText('');
+    setGeneratedCustomBgBase64(null);
   };
 
   // ─── 預設背景選擇（real-bg 模式）────────────────────────────────────────────
@@ -697,7 +725,86 @@ export default function ImageEditor() {
                           </p>
                         </div>
                       </button>
+
+                      {/* 自定義背景生成卡片 */}
+                      <button
+                        onClick={() => {
+                          setBgSource('custom-prompt');
+                          setSelectedPresetBg(null);
+                          if (!generatedCustomBgBase64) {
+                            setCustomBgBase64(null);
+                          } else {
+                            setCustomBgBase64(generatedCustomBgBase64);
+                          }
+                        }}
+                        className={`relative aspect-square rounded-sm border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center gap-1 overflow-hidden ${
+                          bgSource === 'custom-prompt'
+                            ? "border-[oklch(0.72_0.08_75)] ring-2 ring-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/5%)]"
+                            : "border-[oklch(0.3_0.01_65/50%)] hover:border-[oklch(0.72_0.08_75/50%)]"
+                        }`}
+                      >
+                        {generatedCustomBgBase64 ? (
+                          <>
+                            <img
+                              src={`data:image/jpeg;base64,${generatedCustomBgBase64}`}
+                              alt="自定義背景"
+                              className="absolute inset-0 w-full h-full object-cover rounded-sm"
+                            />
+                            <div className="absolute inset-0 bg-[oklch(0.08_0.005_60/40%)] rounded-sm" />
+                            {bgSource === 'custom-prompt' && (
+                              <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                                <Check size={8} className="text-[oklch(0.1_0.005_60)]" />
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-base leading-none">✏️</span>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-[oklch(0.08_0.005_60/80%)] py-0.5 px-1">
+                          <p className="text-[8px] text-[oklch(0.82_0.01_80)] text-center truncate tracking-tight">
+                            自定義背景
+                          </p>
+                        </div>
+                      </button>
                     </div>
+
+                    {/* 自定義背景 Prompt 輸入區 */}
+                    {bgSource === 'custom-prompt' && (
+                      <div className="mt-3 p-3 rounded-sm border border-[oklch(0.72_0.08_75/30%)] bg-[oklch(0.12_0.005_60/50%)] space-y-2">
+                        <p className="text-[10px] tracking-[0.06em] text-[oklch(0.72_0.08_75)]">
+                          用文字描述你想要的背景
+                        </p>
+                        <textarea
+                          value={customPromptText}
+                          onChange={(e) => setCustomPromptText(e.target.value)}
+                          placeholder="例如：奢華深藍絲絨背景，金色光線灑落"
+                          rows={2}
+                          className="w-full bg-[oklch(0.08_0.005_60)] border border-[oklch(0.25_0.01_65/50%)] rounded-sm px-3 py-2 text-[12px] text-[oklch(0.82_0.01_80)] placeholder-[oklch(0.35_0.02_60)] resize-none focus:outline-none focus:border-[oklch(0.72_0.08_75/60%)] transition-colors"
+                        />
+                        <button
+                          onClick={handleGenerateCustomBg}
+                          disabled={generateBgMutation.isPending || !customPromptText.trim()}
+                          className={`w-full py-2 rounded-sm flex items-center justify-center gap-2 text-[11px] tracking-[0.08em] transition-all duration-200 ${
+                            !generateBgMutation.isPending && customPromptText.trim()
+                              ? "bg-[oklch(0.72_0.08_75/20%)] border border-[oklch(0.72_0.08_75/50%)] text-[oklch(0.72_0.08_75)] hover:bg-[oklch(0.72_0.08_75/30%)]"
+                              : "bg-[oklch(0.15_0.005_60)] border border-[oklch(0.2_0.01_65/30%)] text-[oklch(0.35_0.02_60)] cursor-not-allowed"
+                          }`}
+                        >
+                          {generateBgMutation.isPending ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" />
+                              Imagen 3 生成中...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={12} />
+                              生成背景
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
                     <input
                       ref={bgUploadRef}
                       type="file"
@@ -710,9 +817,14 @@ export default function ImageEditor() {
                       }}
                     />
                     {/* 未選背景提示 */}
-                    {!customBgBase64 && (
+                    {!customBgBase64 && bgSource !== 'custom-prompt' && (
                       <p className="text-[oklch(0.5_0.02_60)] text-[11px] mt-2">
                         請先選擇或上傳背景照片
+                      </p>
+                    )}
+                    {bgSource === 'custom-prompt' && !generatedCustomBgBase64 && !generateBgMutation.isPending && (
+                      <p className="text-[oklch(0.5_0.02_60)] text-[11px] mt-2">
+                        輸入描述後點擊「生成背景」
                       </p>
                     )}
                   </div>
