@@ -84,6 +84,7 @@ export default function ImageEditor() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [colorLock, setColorLock] = useState(false);
+  const [mode, setMode] = useState<"product" | "lifestyle">("product");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback((file: File) => {
@@ -145,7 +146,8 @@ export default function ImageEditor() {
       imageBase64: originalImage,
       mimeType: originalMime as "image/jpeg" | "image/png",
       backgroundStyle: selectedBg as Parameters<typeof applyBgMutation.mutate>[0]["backgroundStyle"],
-            colorLock,
+      colorLock,
+      mode,
     });
   };
 
@@ -167,6 +169,7 @@ export default function ImageEditor() {
     setOriginalImage(null);
     setSelectedBg(null);
     setResultUrl(null);
+    setMode("product");
   };
 
   const isGenerating = applyBgMutation.isPending;
@@ -294,6 +297,60 @@ export default function ImageEditor() {
             <div
               className="animate-fade-in-up"
             >
+              {/* 模式選擇 */}
+              <div className="mb-6">
+                <p className="text-xs tracking-[0.1em] text-[oklch(0.55_0.02_60)] mb-3">選擇處理模式</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setMode("product")}
+                    className={`p-4 rounded-sm border text-left transition-all duration-200 ${
+                      mode === "product"
+                        ? "border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
+                        : "border-[oklch(0.25_0.01_65/40%)] hover:border-[oklch(0.72_0.08_75/40%)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-base">📦</span>
+                      <span className={`text-sm font-medium tracking-[0.05em] ${mode === "product" ? "text-[oklch(0.72_0.08_75)]" : "text-[oklch(0.75_0.01_80)]"}`}>
+                        商品棚拍模式
+                      </span>
+                      {mode === "product" && (
+                        <span className="ml-auto w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                          <Check size={9} className="text-[oklch(0.1_0.005_60)]" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-[oklch(0.45_0.02_60)] leading-relaxed">
+                      保留商品原貌，包裝文字、中文標示完整保留
+                    </p>
+                  </button>
+
+                  <button
+                    onClick={() => setMode("lifestyle")}
+                    className={`p-4 rounded-sm border text-left transition-all duration-200 ${
+                      mode === "lifestyle"
+                        ? "border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
+                        : "border-[oklch(0.25_0.01_65/40%)] hover:border-[oklch(0.72_0.08_75/40%)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-base">🛍️</span>
+                      <span className={`text-sm font-medium tracking-[0.05em] ${mode === "lifestyle" ? "text-[oklch(0.72_0.08_75)]" : "text-[oklch(0.75_0.01_80)]"}`}>
+                        情境生活照模式
+                      </span>
+                      {mode === "lifestyle" && (
+                        <span className="ml-auto w-4 h-4 rounded-full bg-[oklch(0.72_0.08_75)] flex items-center justify-center">
+                          <Check size={9} className="text-[oklch(0.1_0.005_60)]" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-[oklch(0.45_0.02_60)] leading-relaxed">
+                      人物帶包包、情境照，AI 重新生成更自然
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 {/* Original Preview */}
                 <div className="lg:col-span-2">
@@ -386,19 +443,21 @@ export default function ImageEditor() {
                       {isGenerating ? (
                         <>
                           <Loader2 size={16} className="animate-spin" />
-                          Imagen 3 AI 生成中...
+                          {mode === "product" ? "BGSWAP AI 合成中..." : "Imagen 3 AI 生成中..."}
                         </>
                       ) : (
                         <>
                           <Sparkles size={16} />
-                          開始 AI 背景合成
+                          {mode === "product" ? "開始背景合成（保留文字）" : "開始 AI 重新生成"}
                           <ChevronRight size={16} />
                         </>
                       )}
                     </button>
                     {isGenerating && (
                       <p className="text-center text-[oklch(0.45_0.02_60)] text-xs mt-3">
-                        Imagen 3 正在分析商品並生成奢華合成圖，約需 20-40 秒...
+                        {mode === "product"
+                          ? "AI 正在去背並合成奢華背景，文字標示完整保留，約需 20-40 秒..."
+                          : "Imagen 3 正在分析情境並重新生成，約需 20-40 秒..."}
                       </p>
                     )}
                   </div>

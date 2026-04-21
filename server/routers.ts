@@ -7,7 +7,7 @@ import { getDb } from "./db";
 import { feedbacks } from "../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, RawReferenceImage, EditMode } from "@google/genai";
 import { ENV } from "./_core/env";
 
 // ─── Gemini 初始化 ────────────────────────────────────────────────────────────
@@ -63,6 +63,36 @@ async function generateWithImagen(
   if (!imageBytes) throw new Error("Imagen 未返回圖片");
 
   return imageBytes; // base64
+}
+
+// ─── Imagen 3 Background Swap（商品棚拍模式：保留商品原貌）──────────────────
+// 使用 editImage + EDIT_MODE_BGSWAP，AI 自動去背並套用新背景
+// 商品上的文字、logo、中文包裝標示 100% 保留不變
+
+async function generateWithImagenBgSwap(
+  bgPrompt: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<string> {
+  const ai = getGenAIClient();
+
+  const rawRef = new RawReferenceImage();
+  rawRef.referenceImage = { imageBytes: imageBase64 };
+  rawRef.referenceId = 0;
+
+  const response = await ai.models.editImage({
+    model: "imagen-3.0-capability-001",
+    prompt: bgPrompt,
+    referenceImages: [rawRef],
+    config: {
+      editMode: EditMode.EDIT_MODE_BGSWAP,
+      numberOfImages: 1,
+    },
+  });
+
+  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+  if (!imageBytes) throw new Error("Imagen BGSWAP 未返回圖片");
+  return imageBytes;
 }
 
 // ─── Gemini 2.0 Flash Exp 圖片生成（Fallback 方案）───────────────────────────
@@ -265,6 +295,11 @@ ${input.originalText}
             "rose-petal",
             "crystal-light",
           ]),
+          // 新增：模式選擇
+          // "product" = 商品棚拍模式（保留文字/包裝，用 BGSWAP）
+          // "lifestyle" = 情境生活照模式（AI 重新生成，原有邏輯）
+          mode: z.enum(["product", "lifestyle"]).default("lifestyle"),
+          colorLock: z.boolean().default(false),
         })
       )
       .mutation(async ({ input }) => {
@@ -282,31 +317,51 @@ ${input.originalText}
         };
 
         const prompt = bgPrompts[input.backgroundStyle];
-
         let resultBase64: string;
         let usedFallback = false;
 
-        try {
-          // 主要方案： Imagen 3
-          resultBase64 = await generateWithImagen(prompt, input.imageBase64, input.mimeType);
-        } catch (imagenError) {
-          console.warn("[Imagen 3 failed, trying Gemini fallback]", imagenError);
+        if (input.mode === "product") {
+          // ── 商品棚拍模式：BGSWAP 保留商品原貌（文字/中文包裝完整保留）──
           try {
-            // Fallback： Gemini 2.5 Flash 圖片生成
-            resultBase64 = await generateWithGeminiFallback(prompt, input.imageBase64, input.mimeType);
-            usedFallback = true;
-          } catch (fallbackError) {
-            console.error("[Gemini fallback also failed]", fallbackError);
-            throw new Error(`AI 圖片生成失敗，請稍後重試。原因：${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+            resultBase64 = await generateWithImagenBgSwap(prompt, input.imageBase64, input.mimeType);
+          } catch (bgswapError) {
+            console.warn("[BGSWAP failed, trying Gemini fallback]", bgswapError);
+            try {
+              const productPrompt = `${prompt} CRITICAL: preserve ALL text, Chinese characters, labels, logos, and product details EXACTLY as shown. Only replace the background.`;
+              resultBase64 = await generateWithGeminiFallback(productPrompt, input.imageBase64, input.mimeType);
+              usedFallback = true;
+            } catch (fallbackError) {
+              console.error("[Gemini fallback also failed]", fallbackError);
+              throw new Error(`AI 圖片生成失敗，請稍後重試。原因：${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+            }
           }
+          return {
+            imageBase64: resultBase64,
+            backgroundStyle: input.backgroundStyle,
+            usedFallback,
+            message: usedFallback ? "圖片已生成（使用備用 AI 方案）" : "✨ 商品棚拍合成完成，文字標示完整保留",
+          };
+        } else {
+          // ── 情境生活照模式：Imagen 3 重新生成（原有邏輯不變）──
+          try {
+            resultBase64 = await generateWithImagen(prompt, input.imageBase64, input.mimeType);
+          } catch (imagenError) {
+            console.warn("[Imagen 3 failed, trying Gemini fallback]", imagenError);
+            try {
+              resultBase64 = await generateWithGeminiFallback(prompt, input.imageBase64, input.mimeType);
+              usedFallback = true;
+            } catch (fallbackError) {
+              console.error("[Gemini fallback also failed]", fallbackError);
+              throw new Error(`AI 圖片生成失敗，請稍後重試。原因：${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+            }
+          }
+          return {
+            imageBase64: resultBase64,
+            backgroundStyle: input.backgroundStyle,
+            usedFallback,
+            message: usedFallback ? "AI 圖片已生成（使用備用方案）" : "✨ Imagen 3 AI 圖片已生成",
+          };
         }
-
-        return {
-          imageBase64: resultBase64,
-          backgroundStyle: input.backgroundStyle,
-          usedFallback,
-          message: usedFallback ? "AI 圖片已生成（使用備用方案）" : "Imagen 3 AI 圖片已生成",
-        };
       }),
   }),
 
