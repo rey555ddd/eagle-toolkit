@@ -123,12 +123,12 @@ const MODE_CONFIG: Record<ProcessMode, {
     loadingDesc: "AI 正在去背並合成您選擇的背景，約需 10-20 秒...",
   },
   "lifestyle": {
-    emoji: "🛍️",
-    title: "情境生活照",
-    desc: "AI 完整重新生成，適合無文字的精品包",
-    btnLabel: "開始 AI 重新生成",
-    loadingLabel: "Imagen 3 重新生成中...",
-    loadingDesc: "Imagen 3 正在分析情境並重新生成，約需 20-40 秒...",
+    emoji: "✨",
+    title: "精品棚拍模式",
+    desc: "AI 完整重新生成，適合無文字商品（精品包、飾品、造型瓶）",
+    btnLabel: "開始 AI 精品棚拍",
+    loadingLabel: "Imagen 3 精品棚拍生成中...",
+    loadingDesc: "Imagen 3 正在重新生成精品棚拍效果，約需 20-40 秒...",
   },
 };
 
