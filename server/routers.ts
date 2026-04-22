@@ -7,189 +7,63 @@ import { getDb } from "./db";
 import { feedbacks } from "../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleGenAI, RawReferenceImage, EditMode } from "@google/genai";
 import { ENV } from "./_core/env";
 
-// ─── Gemini 初始化 ────────────────────────────────────────────────────────────
+// ─── Gemini 初始化（文案生成仍用 Gemini）─────────────────────────────────────
 function getGeminiClient() {
   const apiKey = ENV.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未設定");
   return new GoogleGenerativeAI(apiKey);
 }
 
-function getGenAIClient() {
-  const apiKey = ENV.geminiApiKey;
-  if (!apiKey) throw new Error("GEMINI_API_KEY 未設定");
-  return new GoogleGenAI({ apiKey });
-}
-
-// ─── Imagen 3 圖片生成（主要方案）────────────────────────────────────────────
-async function generateWithImagen(
+// ─── GPT Image 2 精修（OpenAI images.edit）──────────────────────────────────
+// 單一模式：原圖 + Prompt → 保留商品主體與所有文字、替換場景
+async function refineWithGptImage(
   prompt: string,
   imageBase64: string,
   mimeType: string
 ): Promise<string> {
-  const ai = getGenAIClient();
+  const apiKey = ENV.openaiApiKey;
+  if (!apiKey) throw new Error("OPENAI_API_KEY 未設定，請至 Cloudflare Pages 環境變數配置");
 
-  // 先用 Gemini Vision 分析商品
-  const visionModel = getGeminiClient().getGenerativeModel({ model: "gemini-2.5-flash" });
-  const visionResult = await visionModel.generateContent([
-    {
-      inlineData: {
-        data: imageBase64,
-        mimeType: mimeType as "image/jpeg" | "image/png" | "image/webp",
-      },
-    },
-    {
-      text: "Describe this product in 1-2 sentences for luxury product photography. Include: product type, main color, material, and brand if visible. Be concise and specific. English only.",
-    },
-  ]);
-  const productDesc = visionResult.response.text().trim();
-
-  // 使用 Imagen 3 生成合成圖
-  const fullPrompt = `${prompt} Product: ${productDesc}. Ultra-high quality commercial photography, 8K resolution, perfect lighting, no text, no watermark, photorealistic.`;
-
-  const response = await ai.models.generateImages({
-    model: "imagen-3.0-generate-001",
-    prompt: fullPrompt,
-    config: {
-      numberOfImages: 1,
-      aspectRatio: "1:1",
-      safetyFilterLevel: "BLOCK_ONLY_HIGH" as never,
-    },
-  });
-
-  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-  if (!imageBytes) throw new Error("Imagen 未返回圖片");
-
-  return imageBytes; // base64
-}
-
-// ─── remove.bg 去背（商品棚拍模式：保留商品原始像素）────────────────────────
-// 呼叫 remove.bg API，回傳透明背景 PNG base64
-// 商品上所有文字、中文標示、logo 100% 保留，因為是原始像素
-
-async function removeBackgroundApi(
-  apiKey: string,
-  imageBase64: string,
-  mimeType: string
-): Promise<string> {
   const binary = atob(imageBase64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const blob = new Blob([bytes], { type: mimeType });
 
-  const formData = new FormData();
-  formData.append("image_file", blob, "product.jpg");
-  formData.append("size", "auto");
+  const form = new FormData();
+  form.append("model", ENV.openaiImageModel);
+  form.append("image", blob, mimeType === "image/png" ? "product.png" : "product.jpg");
+  form.append("prompt", prompt);
+  form.append("n", "1");
+  form.append("size", "1024x1024");
+  form.append("quality", "high");
 
-  const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+  const res = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
-    headers: { "X-Api-Key": apiKey },
-    body: formData,
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`remove.bg 失敗 (${res.status}): ${errText}`);
+    throw new Error(`GPT Image 失敗 (${res.status}): ${errText.slice(0, 500)}`);
   }
 
-  const arrayBuffer = await res.arrayBuffer();
-  const resultBytes = new Uint8Array(arrayBuffer);
-  let bin = "";
-  for (let i = 0; i < resultBytes.length; i++) bin += String.fromCharCode(resultBytes[i]);
-  return btoa(bin); // 透明 PNG base64
-}
+  const json = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+  const b64 = json.data?.[0]?.b64_json;
+  if (b64) return b64;
 
-// ─── Imagen 3 純背景生成（商品棚拍模式：只生成背景，不含商品）────────────────
-
-async function generateBackgroundOnly(bgPrompt: string): Promise<string> {
-  const ai = getGenAIClient();
-  const prompt = `${bgPrompt} Empty studio background with no products, no objects, no text. Pure background texture and lighting only. Professional luxury product photography backdrop.`;
-
-  const response = await ai.models.generateImages({
-    model: "imagen-3.0-generate-001",
-    prompt,
-    config: {
-      numberOfImages: 1,
-      aspectRatio: "1:1",
-      safetyFilterLevel: "BLOCK_ONLY_HIGH" as never,
-    },
-  });
-
-  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-  if (!imageBytes) throw new Error("背景圖片生成失敗");
-  return imageBytes; // base64
-}
-
-// ─── Imagen 3 Background Swap（商品棚拍模式：保留商品原貌）──────────────────
-// 使用 editImage + EDIT_MODE_BGSWAP，AI 自動去背並套用新背景
-// 商品上的文字、logo、中文包裝標示 100% 保留不變
-
-async function generateWithImagenBgSwap(
-  bgPrompt: string,
-  imageBase64: string,
-  mimeType: string
-): Promise<string> {
-  const ai = getGenAIClient();
-
-  const rawRef = new RawReferenceImage();
-  rawRef.referenceImage = { imageBytes: imageBase64 };
-  rawRef.referenceId = 0;
-
-  const response = await ai.models.editImage({
-    model: "imagen-3.0-capability-001",
-    prompt: bgPrompt,
-    referenceImages: [rawRef],
-    config: {
-      editMode: EditMode.EDIT_MODE_BGSWAP,
-      numberOfImages: 1,
-    },
-  });
-
-  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-  if (!imageBytes) throw new Error("Imagen BGSWAP 未返回圖片");
-  return imageBytes;
-}
-
-// ─── Gemini 2.0 Flash Exp 圖片生成（Fallback 方案）───────────────────────────
-// gemini-2.0-flash-exp 是目前唯一支援 responseModalities IMAGE 輸出的 Gemini 模型
-async function generateWithGeminiFallback(
-  prompt: string,
-  imageBase64: string,
-  mimeType: string
-): Promise<string> {
-  const ai = getGenAIClient();
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              data: imageBase64,
-              mimeType: mimeType as "image/jpeg" | "image/png",
-            },
-          },
-          {
-            text: `${prompt} Use the product shown in the image. Generate a luxury product photography composite image. Return only the image.`,
-          },
-        ],
-      },
-    ],
-    config: {
-      responseModalities: ["IMAGE", "TEXT"],
-    },
-  });
-
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      return part.inlineData.data;
-    }
+  const url = json.data?.[0]?.url;
+  if (url) {
+    const imgRes = await fetch(url);
+    const buf = new Uint8Array(await imgRes.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+    return btoa(bin);
   }
-  throw new Error("Gemini fallback 未返回圖片");
+
+  throw new Error("GPT Image 未回傳圖片資料");
 }
 
 async function callGeminiText(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -202,24 +76,6 @@ async function callGeminiText(systemPrompt: string, userPrompt: string): Promise
   return result.response.text();
 }
 
-async function callGeminiVision(
-  prompt: string,
-  imageBase64: string,
-  mimeType: string
-): Promise<string> {
-  const genAI = getGeminiClient();
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const result = await model.generateContent([
-    {
-      inlineData: {
-        data: imageBase64,
-        mimeType: mimeType as "image/jpeg" | "image/png" | "image/webp",
-      },
-    },
-    { text: prompt },
-  ]);
-  return result.response.text();
-}
 
 export const appRouter = router({
   system: systemRouter,
@@ -317,140 +173,65 @@ ${input.originalText}
       }),
   }),
 
-  // ─── 圖片去背 + 背景合成（Imagen 3 AI 生成）────────────────────────────────
+  // ─── 圖片精修（GPT Image 2 單一模式）───────────────────────────────────────
+  // 流程：上傳商品原圖 → GPT Image 2 edit → 保留主體/文字+換場景
   imageProcessor: router({
-    removeBackground: publicProcedure
+    refine: publicProcedure
       .input(
         z.object({
           imageBase64: z.string().max(10_000_000),
           mimeType: z.string().default("image/jpeg"),
+          preset: z
+            .enum([
+              "marble-white",
+              "marble-black",
+              "velvet-black",
+              "velvet-deep-blue",
+              "gold-bokeh",
+              "champagne-silk",
+              "dark-wood",
+              "mirror-reflection",
+              "rose-petal",
+              "crystal-light",
+            ])
+            .optional(),
+          customPrompt: z.string().max(2000).optional(),
         })
       )
       .mutation(async ({ input }) => {
-        const analysisPrompt = `Describe this product in 1-2 sentences for luxury product photography. Include: product type, main color, material, and brand if visible. English only.`;
-        const productDescription = await callGeminiVision(analysisPrompt, input.imageBase64, input.mimeType);
+        const presets: Record<string, string> = {
+          "marble-white": "Place the product on a pristine white Carrara marble surface with subtle gold veining. Soft studio lighting, clean minimalist composition, luxury product photography.",
+          "marble-black": "Place the product on dramatic black marble with gold veining. Moody side lighting, deep shadows, high-end editorial luxury style.",
+          "velvet-black": "Place the product on rich black velvet fabric. Dramatic side lighting, jewelry photography style, deep luxurious shadows.",
+          "velvet-deep-blue": "Place the product on deep navy blue velvet background. Soft dramatic lighting, high fashion editorial style.",
+          "gold-bokeh": "Place the product against a warm golden bokeh background. Champagne gold light halo, dreamy opulent atmosphere.",
+          "champagne-silk": "Place the product on flowing champagne silk fabric with soft folds. Warm golden hour lighting, elegant and soft luxury.",
+          "dark-wood": "Place the product on a dark walnut wood texture surface. Warm accent lighting, refined luxury lifestyle photography.",
+          "mirror-reflection": "Place the product on a smooth mirror acrylic surface with perfect reflection. High-end commercial product photography.",
+          "rose-petal": "Place the product surrounded by scattered rose petals on a dark background. Romantic opulent atmosphere, soft warm light.",
+          "crystal-light": "Place the product with crystal prism light effects and rainbow light refraction. Jewelry photography style, magical luxury feel.",
+        };
+
+        const sceneInstruction = input.customPrompt?.trim()
+          ? input.customPrompt.trim()
+          : presets[input.preset ?? "marble-white"];
+
+        // 強硬保護商品本體與所有文字/LOGO——GPT Image 2 的強項
+        const prompt = [
+          sceneInstruction,
+          "CRITICAL: Keep the product itself completely identical to the input image — do NOT alter the product's shape, colors, materials, labels, packaging, or any text/logos on it.",
+          "Preserve every character of Chinese, English, or other text on the product packaging with pixel-perfect accuracy.",
+          "Only change the background scene and lighting around the product.",
+          "Ultra-high quality commercial product photography, sharp focus on the product, photorealistic.",
+        ].join(" ");
+
+        const imageBase64 = await refineWithGptImage(prompt, input.imageBase64, input.mimeType);
+
         return {
-          productDescription: productDescription.trim(),
-          message: "圖片分析完成，請選擇背景進行合成",
+          imageBase64,
+          preset: input.preset,
+          message: "✨ GPT Image 2 精修完成，商品文字 100% 保留",
         };
-      }),
-
-    generateBackground: publicProcedure
-      .input(
-        z.object({
-          prompt: z.string().min(1),
-          backgroundStyle: z.string().optional(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const fullPrompt = `${input.prompt}, professional product photography background, ultra realistic, 8K, no people, no products`;
-        const backgroundBase64 = await generateBackgroundOnly(fullPrompt);
-        return { backgroundBase64 };
-      }),
-
-    applyLuxuryBackground: publicProcedure
-      .input(
-        z.object({
-          imageBase64: z.string().max(10_000_000),
-          mimeType: z.string().default("image/jpeg"),
-          backgroundStyle: z.enum([
-            "marble-white",
-            "marble-black",
-            "velvet-black",
-            "velvet-deep-blue",
-            "gold-bokeh",
-            "champagne-silk",
-            "dark-wood",
-            "mirror-reflection",
-            "rose-petal",
-            "crystal-light",
-          ]),
-          // 模式選擇
-          // "ai-studio"  = AI 棚拍模式（remove.bg 去背 + Imagen 3 生成背景 + Canvas 合成）
-          // "real-bg"    = 純去背模式（remove.bg 去背 + 自訂背景 + Canvas 合成，不跑 Imagen）
-          // "lifestyle"  = 情境生活照（完整 Imagen 3 重新生成，原有邏輯不變）
-          mode: z.enum(["ai-studio", "real-bg", "lifestyle"]).default("ai-studio"),
-          colorLock: z.boolean().default(false),
-          customBackgroundBase64: z.string().optional(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const bgPrompts: Record<string, string> = {
-          "marble-white": "luxury product photography on white Carrara marble surface with subtle gold veining, soft studio lighting, clean minimalist composition,",
-          "marble-black": "luxury product photography on dramatic black marble with gold veining, moody side lighting, deep shadows, high-end editorial style,",
-          "velvet-black": "luxury product photography on rich black velvet fabric, dramatic side lighting, jewelry photography style, deep shadows,",
-          "velvet-deep-blue": "luxury product photography on deep navy blue velvet background, soft dramatic lighting, high fashion editorial,",
-          "gold-bokeh": "luxury product photography with warm golden bokeh background, champagne gold light halo, dreamy opulent atmosphere,",
-          "champagne-silk": "luxury product photography on flowing champagne silk fabric with soft folds, warm golden hour lighting, elegant and soft,",
-          "dark-wood": "luxury product photography on dark walnut wood texture surface, warm accent lighting, refined lifestyle photography,",
-          "mirror-reflection": "luxury product photography on smooth mirror/acrylic surface with perfect reflection, high-end commercial product photography,",
-          "rose-petal": "luxury product photography surrounded by scattered rose petals on dark background, romantic opulent atmosphere, soft warm light,",
-          "crystal-light": "luxury product photography with crystal prism light effects, rainbow light refraction, jewelry photography style, magical luxury,",
-        };
-
-        const prompt = bgPrompts[input.backgroundStyle];
-        let resultBase64: string;
-        let usedFallback = false;
-
-        if (input.mode === "ai-studio" || input.mode === "real-bg") {
-          // ── AI 棚拍 / 純去背：remove.bg 去背 + 背景（自訂或 Imagen 3 生成）──
-          // 前端用 Canvas 合成，原始商品像素完整保留，文字 100% 清晰
-          const removeBgKey = ENV.removeBgApiKey;
-          if (!removeBgKey) throw new Error("REMOVE_BG_API_KEY 未設定，請在 Cloudflare Pages 環境變數中配置");
-
-          if (input.mode === "real-bg" || input.customBackgroundBase64) {
-            // real-bg 模式 or 有自訂背景：只去背，不呼叫 Imagen 3
-            if (!input.customBackgroundBase64) {
-              throw new Error("純去背模式需要提供背景照片（customBackgroundBase64）");
-            }
-            const cutoutBase64 = await removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType);
-            return {
-              imageBase64: null,
-              cutoutBase64,
-              backgroundBase64: input.customBackgroundBase64,
-              useCanvas: true,
-              backgroundStyle: input.backgroundStyle,
-              usedFallback: false,
-              message: "✨ 去背完成，使用自訂背景合成中",
-            };
-          }
-
-          // ai-studio 模式，無自訂背景：Imagen 3 生成純背景
-          const [cutoutBase64, backgroundBase64] = await Promise.all([
-            removeBackgroundApi(removeBgKey, input.imageBase64, input.mimeType),
-            generateBackgroundOnly(prompt),
-          ]);
-
-          return {
-            imageBase64: null,
-            cutoutBase64,       // 透明 PNG，前端 Canvas 用
-            backgroundBase64,   // Imagen 3 純背景，前端 Canvas 用
-            useCanvas: true,    // 通知前端用 Canvas 合成
-            backgroundStyle: input.backgroundStyle,
-            usedFallback: false,
-            message: "✨ 去背完成，前端合成中",
-          };
-        } else {
-          // ── 情境生活照模式：Imagen 3 重新生成（原有邏輯不變）──
-          try {
-            resultBase64 = await generateWithImagen(prompt, input.imageBase64, input.mimeType);
-          } catch (imagenError) {
-            console.warn("[Imagen 3 failed, trying Gemini fallback]", imagenError);
-            try {
-              resultBase64 = await generateWithGeminiFallback(prompt, input.imageBase64, input.mimeType);
-              usedFallback = true;
-            } catch (fallbackError) {
-              console.error("[Gemini fallback also failed]", fallbackError);
-              throw new Error(`AI 圖片生成失敗，請稍後重試。原因：${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-            }
-          }
-          return {
-            imageBase64: resultBase64,
-            backgroundStyle: input.backgroundStyle,
-            usedFallback,
-            message: usedFallback ? "AI 圖片已生成（使用備用方案）" : "✨ Imagen 3 AI 圖片已生成",
-          };
-        }
       }),
   }),
 

@@ -680,6 +680,8 @@ const withMarketing = (prompt: string) => {
 
 interface Env {
   GEMINI_API_KEY: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_IMAGE_MODEL?: string;
   DB?: D1Database;
 }
 
@@ -889,6 +891,59 @@ async function generateWithGeminiFallback(
     }
   }
   throw lastError;
+}
+
+// ─── GPT Image 2 精修（OpenAI images.edit）─────────────────────────────────
+// 單一模式：原商品圖 + 場景 Prompt → 保留商品與所有文字，替換背景
+async function refineWithGptImage(
+  env: Env,
+  prompt: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<string> {
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY 未設定，請至 Cloudflare Pages 環境變數配置');
+
+  const model = env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
+
+  const binary = atob(imageBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType });
+
+  const form = new FormData();
+  form.append('model', model);
+  form.append('image', blob, mimeType === 'image/png' ? 'product.png' : 'product.jpg');
+  form.append('prompt', prompt);
+  form.append('n', '1');
+  form.append('size', '1024x1024');
+  form.append('quality', 'high');
+
+  const res = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`GPT Image 失敗 (${res.status}): ${errText.slice(0, 500)}`);
+  }
+
+  const json = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+  const b64 = json.data?.[0]?.b64_json;
+  if (b64) return b64;
+
+  const url = json.data?.[0]?.url;
+  if (url) {
+    const imgRes = await fetch(url);
+    const buf = new Uint8Array(await imgRes.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+    return btoa(bin);
+  }
+
+  throw new Error('GPT Image 未回傳圖片資料');
 }
 
 // ─── Radar (潛在賣家雷達) ─────────────────────────────────────────────────────
@@ -1420,139 +1475,77 @@ ${input.originalText}
       }),
   }),
 
-  // ─── Image Processing ────────────────────────────────────────────────────────
+  // ─── Image Processing (GPT Image 2 單一模式) ─────────────────────────────
   imageProcessor: router({
-    removeBackground: publicProcedure
+    refine: publicProcedure
       .input(
         z.object({
           imageBase64: z.string().max(10_000_000),
           mimeType: z.string().default('image/jpeg'),
+          preset: z
+            .enum([
+              'marble-white',
+              'marble-black',
+              'velvet-black',
+              'velvet-deep-blue',
+              'gold-bokeh',
+              'champagne-silk',
+              'dark-wood',
+              'mirror-reflection',
+              'rose-petal',
+              'crystal-light',
+            ])
+            .optional(),
+          customPrompt: z.string().max(2000).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const analysisPrompt = `Describe this product in 1-2 sentences for luxury product photography. Include: product type, main color, material, and brand if visible. English only.`;
-        const productDescription = await callGeminiVision(
+        const presets: Record<string, string> = {
+          'marble-white':
+            'Place the product on a pristine white Carrara marble surface with subtle gold veining. Soft studio lighting, clean minimalist composition, luxury product photography.',
+          'marble-black':
+            'Place the product on dramatic black marble with gold veining. Moody side lighting, deep shadows, high-end editorial luxury style.',
+          'velvet-black':
+            'Place the product on rich black velvet fabric. Dramatic side lighting, jewelry photography style, deep luxurious shadows.',
+          'velvet-deep-blue':
+            'Place the product on deep navy blue velvet background. Soft dramatic lighting, high fashion editorial style.',
+          'gold-bokeh':
+            'Place the product against a warm golden bokeh background. Champagne gold light halo, dreamy opulent atmosphere.',
+          'champagne-silk':
+            'Place the product on flowing champagne silk fabric with soft folds. Warm golden hour lighting, elegant and soft luxury.',
+          'dark-wood':
+            'Place the product on a dark walnut wood texture surface. Warm accent lighting, refined luxury lifestyle photography.',
+          'mirror-reflection':
+            'Place the product on a smooth mirror acrylic surface with perfect reflection. High-end commercial product photography.',
+          'rose-petal':
+            'Place the product surrounded by scattered rose petals on a dark background. Romantic opulent atmosphere, soft warm light.',
+          'crystal-light':
+            'Place the product with crystal prism light effects and rainbow light refraction. Jewelry photography style, magical luxury feel.',
+        };
+
+        const sceneInstruction = input.customPrompt?.trim()
+          ? input.customPrompt.trim()
+          : presets[input.preset ?? 'marble-white'];
+
+        const prompt = [
+          sceneInstruction,
+          "CRITICAL: Keep the product itself completely identical to the input image — do NOT alter the product's shape, colors, materials, labels, packaging, or any text/logos on it.",
+          'Preserve every character of Chinese, English, or other text on the product packaging with pixel-perfect accuracy.',
+          'Only change the background scene and lighting around the product.',
+          'Ultra-high quality commercial product photography, sharp focus on the product, photorealistic.',
+        ].join(' ');
+
+        const imageBase64 = await refineWithGptImage(
           ctx.env,
-          analysisPrompt,
+          prompt,
           input.imageBase64,
           input.mimeType
         );
+
         return {
-          productDescription: productDescription.trim(),
-          message: '圖片分析完成，請選擇背景進行合成',
-        };
-      }),
-
-    applyLuxuryBackground: publicProcedure
-      .input(
-        z.object({
-          imageBase64: z.string().max(10_000_000),
-          mimeType: z.string().default('image/jpeg'),
-          backgroundStyle: z.enum([
-            'marble-white',
-            'marble-black',
-            'velvet-black',
-            'velvet-deep-blue',
-            'gold-bokeh',
-            'champagne-silk',
-            'dark-wood',
-            'mirror-reflection',
-            'rose-petal',
-            'crystal-light',
-          ]),
-          colorLock: z.boolean().default(false),
-        })
-      )
-      .mutation(async ({ input, ctx }) => {
-        const bgPrompts: Record<string, string> = {
-          'marble-white':
-            'luxury product photography on white Carrara marble surface with subtle gold veining, soft studio lighting, clean minimalist composition,',
-          'marble-black':
-            'luxury product photography on dramatic black marble with gold veining, moody side lighting, deep shadows, high-end editorial style,',
-          'velvet-black':
-            'luxury product photography on rich black velvet fabric, dramatic side lighting, jewelry photography style, deep shadows,',
-          'velvet-deep-blue':
-            'luxury product photography on deep navy blue velvet background, soft dramatic lighting, high fashion editorial,',
-          'gold-bokeh':
-            'luxury product photography with warm golden bokeh background, champagne gold light halo, dreamy opulent atmosphere,',
-          'champagne-silk':
-            'luxury product photography on flowing champagne silk fabric with soft folds, warm golden hour lighting, elegant and soft,',
-          'dark-wood':
-            'luxury product photography on dark walnut wood texture surface, warm accent lighting, refined lifestyle photography,',
-          'mirror-reflection':
-            'luxury product photography on smooth mirror/acrylic surface with perfect reflection, high-end commercial product photography,',
-          'rose-petal':
-            'luxury product photography surrounded by scattered rose petals on dark background, romantic opulent atmosphere, soft warm light,',
-          'crystal-light':
-            'luxury product photography with crystal prism light effects, rainbow light refraction, jewelry photography style, magical luxury,',
-        };
-
-        const basePrompt = bgPrompts[input.backgroundStyle];
-        const colorLockInstruction = input.colorLock
-          ? ' CRITICAL IMAGE EDITING INSTRUCTION: Keep the product EXACTLY as shown in the original photo. Preserve the EXACT same colors, patterns, details, shape, and textures. Do NOT alter, tint, recolor, or regenerate the product in any way. ONLY replace the background. The product must remain pixel-perfect identical to the input image.'
-          : '';
-        const prompt = basePrompt + colorLockInstruction;
-
-        let resultBase64: string;
-        let usedFallback = false;
-
-        if (input.colorLock) {
-          // Color Lock ON: MUST use Gemini which receives the actual image.
-          // Imagen only generates from text prompt and cannot preserve original colors.
-          try {
-            resultBase64 = await generateWithGeminiFallback(
-              ctx.env,
-              prompt,
-              input.imageBase64,
-              input.mimeType
-            );
-            usedFallback = true;
-          } catch (fallbackError) {
-            console.error('[Gemini Color Lock generation failed]', fallbackError);
-            throw new Error(
-              `Color Lock generation failed. Please try again. Error: ${
-                fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-              }`
-            );
-          }
-        } else {
-          try {
-            // Primary method: Imagen (best quality for non-color-lock)
-            resultBase64 = await generateWithImagen(
-              ctx.env,
-              prompt,
-              input.imageBase64,
-              input.mimeType
-            );
-          } catch (imagenError) {
-            console.warn('[Imagen failed, trying Gemini fallback]', imagenError);
-            try {
-              resultBase64 = await generateWithGeminiFallback(
-                ctx.env,
-                prompt,
-                input.imageBase64,
-                input.mimeType
-              );
-              usedFallback = true;
-            } catch (fallbackError) {
-              console.error('[Gemini fallback also failed]', fallbackError);
-              throw new Error(
-                `AI image generation failed. Please try again later. Error: ${
-                  fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-                }`
-              );
-            }
-          }
-        }
-
-        // Return base64 directly (no S3 storage on Cloudflare Pages)
-        return {
-          imageBase64: resultBase64,
-          backgroundStyle: input.backgroundStyle,
-          usedFallback,
-          message: usedFallback
-            ? 'AI image generated (using fallback method)'
-            : 'Imagen 3 AI image generated',
+          imageBase64,
+          preset: input.preset,
+          message: '✨ GPT Image 2 精修完成，商品文字 100% 保留',
         };
       }),
   }),
