@@ -1,72 +1,79 @@
 /**
  * 採購助手 /purchase
  * Abby 專用 — 要密碼才能進
- * - 密碼驗證：localStorage token（與 /radar 同模式）
+ * - 密碼驗證：cookie based（/api/abby-login、/api/abby-check、/api/abby-logout）
  * - 拖拉上傳 → 批次辨識 → 結果表格（含價格欄）→ 信心度警示
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   ScanLine, Trash2, RefreshCw, Save, DollarSign, Lock, Eye, EyeOff, LogOut,
   ShoppingBag,
 } from 'lucide-react'
-import { trpc } from '@/lib/trpc'
 import { useDropzone } from '@/hooks/useDropzone'
 import { useRecognize } from '@/hooks/useRecognize'
 import { DropZone } from '@/components/DropZone'
 import { PurchaseProgressBar } from '@/components/PurchaseProgressBar'
 import { PurchaseResultTable } from '@/components/PurchaseResultTable'
 
-const LS_TOKEN = 'abby-purchase-token'
-
 // ─── AuthGuard ───────────────────────────────────────────────────────────────
 
 export default function PurchasePage() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(LS_TOKEN))
+  const [authed, setAuthed] = useState<boolean | null>(null) // null = 檢查中
 
-  if (!token) {
+  useEffect(() => {
+    fetch('/api/abby-check', { credentials: 'include' })
+      .then(res => setAuthed(res.ok))
+      .catch(() => setAuthed(false))
+  }, [])
+
+  if (authed === null) {
     return (
-      <LoginGate onLogin={(tk) => {
-        localStorage.setItem(LS_TOKEN, tk)
-        setToken(tk)
-      }} />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'oklch(0.1 0.005 60)' }}>
+        <RefreshCw size={20} className="animate-spin" style={{ color: 'oklch(0.55 0.02 60)' }} />
+      </div>
     )
+  }
+
+  if (!authed) {
+    return <LoginGate onLogin={() => setAuthed(true)} />
   }
 
   return (
     <PurchaseDashboard
-      onLogout={() => {
-        localStorage.removeItem(LS_TOKEN)
-        setToken(null)
-      }}
+      onLogout={() => setAuthed(false)}
     />
   )
 }
 
 // ─── 登入頁 ───────────────────────────────────────────────────────────────────
 
-function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
+function LoginGate({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
 
-  const loginMut = trpc.purchase.login.useMutation({
-    onSuccess: (data) => {
-      onLogin(data.token)
-      toast.success('登入成功')
-    },
-    onError: (err) => {
-      toast.error(err.message || '密碼錯誤')
-      setPassword('')
-    },
-  })
-
   const handleSubmit = async () => {
     if (!password.trim()) { toast.error('請輸入密碼'); return }
     setIsLoading(true)
     try {
-      await loginMut.mutateAsync({ password: password.trim() })
+      const res = await fetch('/api/abby-login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: password.trim() }),
+      })
+      if (res.ok) {
+        toast.success('登入成功')
+        onLogin()
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        toast.error(data.error || '密碼錯誤')
+        setPassword('')
+      }
+    } catch {
+      toast.error('網路錯誤，請稍後再試')
     } finally {
       setIsLoading(false)
     }
@@ -216,7 +223,10 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <button
-            onClick={onLogout}
+            onClick={async () => {
+              await fetch('/api/abby-logout', { method: 'POST', credentials: 'include' }).catch(() => {})
+              onLogout()
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
             style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)', color: 'oklch(0.6 0.02 60)' }}
           >
