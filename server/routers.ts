@@ -296,6 +296,184 @@ ${input.originalText}
         return { success: true };
       }),
   }),
+
+  // ─── 採購助手（Abby 專用）────────────────────────────────────────────────────
+  purchase: router({
+    // 密碼登入 → 回傳 session token（存 localStorage，不用 cookie）
+    login: publicProcedure
+      .input(z.object({ password: z.string() }))
+      .mutation(({ input }) => {
+        if (input.password !== ENV.abbyPassword) {
+          throw new Error("密碼錯誤");
+        }
+        // 簡單 token：base64(timestamp + secret_prefix)，前端只要存著就算登入
+        const token = Buffer.from(`abby:${Date.now()}:${ENV.abbyPassword.slice(0, 4)}`).toString("base64");
+        return { token };
+      }),
+
+    // 驗證 token 是否有效（login 後前端可用此確認）
+    verify: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(({ input }) => {
+        try {
+          const decoded = Buffer.from(input.token, "base64").toString("utf-8");
+          const valid = decoded.startsWith(`abby:`) && decoded.endsWith(`:${ENV.abbyPassword.slice(0, 4)}`);
+          return { valid };
+        } catch {
+          return { valid: false };
+        }
+      }),
+
+    // 批次圖片辨識（Gemini Vision）
+    batchRecognize: publicProcedure
+      .input(
+        z.object({
+          images: z.array(z.string().max(5_000_000)).max(10), // dataURL array，最多 10 張一批
+        })
+      )
+      .mutation(async ({ input }) => {
+        const apiKey = ENV.geminiApiKey;
+        if (!apiKey) throw new Error("GEMINI_API_KEY 未設定");
+
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const systemPrompt = `你是一位精品鑑定專家，專門辨識高級精品包包。
+分析每張圖片並用 JSON 回傳辨識結果。
+
+回傳格式（JSON array，每張圖片一個物件）：
+[
+  {
+    "brand": "品牌（香奈兒/LV/愛馬仕/DIOR/GUCCI/YSL/BV/GOYARD/其他）",
+    "model": "型號（如 Classic Flap / Neverfull / Birkin 等）",
+    "color": "顏色",
+    "size": "尺寸（如有，如 25cm / Mini / Large）或 null",
+    "serial": "序號或箱號（如有，如 AP1234567）或 null",
+    "features": ["特殊特徵陣列，如 全皮/金扣/荔枝紋 等，最多 3 個"],
+    "confidence": 0.95
+  }
+]
+
+注意：
+- confidence 為 0~1 之間的浮點數，代表辨識信心度
+- 只辨識精品包，若圖片不是精品包則 brand 填「其他」、confidence 填 0.1
+- 嚴格回傳 JSON array，不要加任何說明文字`;
+
+        const results = [];
+        let totalTokens = 0;
+
+        for (let i = 0; i < input.images.length; i++) {
+          const dataUrl = input.images[i]!;
+          const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+          if (!match) {
+            results.push({
+              imageIndex: i,
+              brand: "格式錯誤",
+              model: "",
+              color: "",
+              size: null,
+              serial: null,
+              features: [],
+              confidence: 0,
+              formattedName: `${i + 1}.格式錯誤`,
+              price: null,
+              costLog: "",
+              error: "無效的圖片格式",
+            });
+            continue;
+          }
+
+          const mimeType = match[1]!;
+          const base64Data = match[2]!;
+
+          try {
+            const result = await model.generateContent([
+              systemPrompt,
+              {
+                inlineData: {
+                  mimeType: mimeType as "image/jpeg" | "image/png" | "image/webp",
+                  data: base64Data,
+                },
+              },
+              "請辨識此精品包，回傳 JSON array（只含此 1 個物件）：",
+            ]);
+
+            const text = result.response.text().trim();
+            const jsonMatch = text.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error("AI 回傳格式錯誤");
+
+            const parsed = JSON.parse(jsonMatch[0]) as Array<{
+              brand: string; model: string; color: string;
+              size: string | null; serial: string | null;
+              features: string[]; confidence: number;
+            }>;
+
+            const item = parsed[0] ?? { brand: "其他", model: "", color: "", size: null, serial: null, features: [], confidence: 0.1 };
+            totalTokens += result.response.usageMetadata?.totalTokenCount ?? 200;
+
+            results.push({
+              imageIndex: i,
+              brand: item.brand,
+              model: item.model,
+              color: item.color,
+              size: item.size,
+              serial: item.serial,
+              features: item.features ?? [],
+              confidence: item.confidence,
+              formattedName: buildFormattedName(i + 1, item.brand, item.model, item.color, item.size, item.serial, item.features ?? []),
+              price: null,
+              costLog: "",
+            });
+          } catch (err) {
+            results.push({
+              imageIndex: i,
+              brand: "辨識失敗",
+              model: "",
+              color: "",
+              size: null,
+              serial: null,
+              features: [],
+              confidence: 0,
+              formattedName: `${i + 1}.辨識失敗`,
+              price: null,
+              costLog: "",
+              error: String(err),
+            });
+          }
+        }
+
+        // Gemini 2.5 Flash 約 NT$0.0003 / 1k tokens（vision 模式較貴，估 1.5x）
+        const estimatedCost = (totalTokens / 1000) * 0.0003 * 1.5 * 32;
+        const totalCostLog = `[費用估算] ${input.images.length} 張 ≈ NT$${estimatedCost.toFixed(2)}（Gemini Vision）`;
+
+        return {
+          results,
+          totalCostLog,
+          imageCount: input.images.length,
+        };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+
+// ─── 採購助手輔助函式 ─────────────────────────────────────────────────────────
+
+function buildFormattedName(
+  seq: number, brand: string, model: string, color: string,
+  size: string | null, serial: string | null, features: string[],
+): string {
+  const f = features.join("")
+  switch (brand) {
+    case "LV": return `${seq}.LV${model}/${color}${serial ? ` ${serial}` : ""}`.trim()
+    case "愛馬仕": return `${seq}.愛馬仕${model}${size ? ` ${size}` : ""}${color ? `/${color}` : ""}${features.length > 0 ? `/${features.join("/")}` : ""}`.trim()
+    case "香奈兒": return `${seq}.香奈兒 ${model}/${color}${size ? ` ${size}` : ""}${f ? ` ${f}` : ""}`.trim()
+    case "DIOR": return `${seq}.DIOR ${model}${color ? `/${color}` : ""}${features.length > 0 ? `/${features.join("")}` : ""}`.trim()
+    case "GUCCI": return `${seq}.GUCCI${model}${color ? `/${color}` : ""}`.trim()
+    case "YSL": return `${seq}.YSL ${model}${color ? `/${color}` : ""}${features.length > 0 ? `/${features.join("")}` : ""}`.trim()
+    case "BV": return `${seq}.BV${model}${color ? `/${color}` : ""}`.trim()
+    case "GOYARD": return `${seq}.GOYARD${model}${color ? `/${color}` : ""}`.trim()
+    default: return `${seq}.${brand}${model}${color ? `/${color}` : ""}${size ? `/${size}` : ""}`.trim()
+  }
+}

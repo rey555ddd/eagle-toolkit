@@ -8,17 +8,18 @@
  */
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Lock } from "lucide-react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg";
 
 const navItems = [
-  { href: "/", label: "首頁", special: false },
-  { href: "/radar", label: "賣家雷達", special: true, badge: "測試開發中" },
-  { href: "/video", label: "影片生成器", special: false },
-  { href: "/copy", label: "文案生成器", special: false },
-  { href: "/image", label: "圖片處理器", special: false },
-  { href: "/feedback", label: "修改建議", special: true },
+  { href: "/", label: "首頁", special: false, locked: false },
+  { href: "/video", label: "影片生成器", special: false, locked: false },
+  { href: "/copy", label: "文案生成器", special: false, locked: false },
+  { href: "/image", label: "圖片處理器", special: false, locked: false },
+  { href: "/purchase", label: "採購助手", special: false, locked: true },
+  { href: "/radar", label: "賣家雷達", special: true, badge: "Abby 專用", locked: true },
+  { href: "/feedback", label: "修改建議", special: true, locked: false },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -88,12 +89,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`text-sm tracking-[0.1em] transition-all duration-300 relative py-1 ${
+                    className={`text-sm tracking-[0.1em] transition-all duration-300 relative py-1 inline-flex items-center gap-1 ${
                       location === item.href
                         ? "text-[oklch(0.72_0.08_75)]"
                         : "text-[oklch(0.7_0.01_80)] hover:text-[oklch(0.72_0.08_75)]"
                     }`}
                   >
+                    {item.locked && <Lock size={10} className="opacity-50" />}
                     {item.label}
                     {location === item.href && (
                       <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[oklch(0.72_0.08_75)] animate-fade-in" />

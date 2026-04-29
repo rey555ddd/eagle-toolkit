@@ -10,4 +10,6 @@ export const ENV = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiImageModel: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
+  // 採購助手 / 賣家雷達 密碼（需在 CF Pages 環境變數設定 ABBY_PASSWORD）
+  abbyPassword: process.env.ABBY_PASSWORD ?? "Abby888",
 };

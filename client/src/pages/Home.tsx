@@ -7,7 +7,7 @@
  * 原因：部署環境中 FM 的 animate prop 不觸發，所有 initial={{ opacity: 0 }} 元素永遠透明
  */
 import { Link } from "wouter";
-import { Film, PenTool, ImageIcon, ArrowRight, MessageSquarePlus } from "lucide-react";
+import { Film, PenTool, ImageIcon, ArrowRight, MessageSquarePlus, ShoppingBag, Radar as RadarIcon, Lock } from "lucide-react";
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/hero_bg-f8gPGgUaC9gPWv74TECkzN.webp";
 const CARD_VIDEO = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/card_video-Jp9EhT8PgRp4ReP5jDKFky.webp";
@@ -22,6 +22,7 @@ const tools = [
     icon: Film,
     href: "/video",
     image: CARD_VIDEO,
+    locked: false,
   },
   {
     title: "文案生成器",
@@ -29,6 +30,7 @@ const tools = [
     icon: PenTool,
     href: "/copy",
     image: CARD_COPY,
+    locked: false,
   },
   {
     title: "圖片處理器",
@@ -36,6 +38,22 @@ const tools = [
     icon: ImageIcon,
     href: "/image",
     image: CARD_IMAGE,
+    locked: false,
+  },
+];
+
+const abbyTools = [
+  {
+    title: "採購辨識助手",
+    desc: "上傳精品包照片，AI 自動辨識品牌、型號、顏色，支援表格編輯與 CSV 下載。",
+    icon: ShoppingBag,
+    href: "/purchase",
+  },
+  {
+    title: "潛在賣家雷達",
+    desc: "掃描 Dcard / PTT / Threads 尋找潛在賣家，AI 生成個人化留言話術。",
+    icon: RadarIcon,
+    href: "/radar",
   },
 ];
 
@@ -135,6 +153,77 @@ export default function Home() {
                         <span>開始使用</span>
                         <ArrowRight size={14} className="transition-transform duration-300 group-hover:translate-x-1" />
                       </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Abby 專用工具 */}
+      <section className="pb-16 sm:pb-20" style={{ borderTop: "1px solid oklch(0.72 0.08 75 / 12%)" }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12">
+          <div className="flex items-center gap-3 mb-6 animate-fade-in">
+            <Lock size={14} style={{ color: "oklch(0.72 0.08 75 / 60%)" }} />
+            <p className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "oklch(0.72 0.08 75 / 60%)" }}>
+              Abby 專用工具
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+            {abbyTools.map((tool, index) => (
+              <div
+                key={tool.href}
+                className="animate-fade-in-up"
+                style={{ animationDelay: `${0.1 + index * 0.1}s`, animationFillMode: "both" }}
+              >
+                <Link href={tool.href}>
+                  <div
+                    className="rounded-xl p-6 group h-full transition-all duration-300"
+                    style={{
+                      background: "oklch(0.14 0.005 60)",
+                      border: "1px solid oklch(0.72 0.08 75 / 15%)",
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor = "oklch(0.72 0.08 75 / 40%)"
+                      ;(e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 30px oklch(0.72 0.08 75 / 8%)"
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor = "oklch(0.72 0.08 75 / 15%)"
+                      ;(e.currentTarget as HTMLDivElement).style.boxShadow = ""
+                    }}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: "oklch(0.72 0.08 75 / 12%)", border: "1px solid oklch(0.72 0.08 75 / 25%)" }}
+                      >
+                        <tool.icon size={18} style={{ color: "oklch(0.72 0.08 75)" }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <h3 className="font-serif text-base tracking-[0.08em]" style={{ color: "oklch(0.92 0.01 80)" }}>
+                            {tool.title}
+                          </h3>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded tracking-wider"
+                            style={{ background: "oklch(0.72 0.08 75 / 12%)", border: "1px solid oklch(0.72 0.08 75 / 25%)", color: "oklch(0.72 0.08 75 / 70%)" }}
+                          >
+                            密碼保護
+                          </span>
+                        </div>
+                        <p className="text-xs leading-relaxed font-light" style={{ color: "oklch(0.55 0.02 60)" }}>
+                          {tool.desc}
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      className="mt-4 flex items-center gap-2 text-xs tracking-[0.12em] transition-all duration-300 group-hover:gap-3"
+                      style={{ color: "oklch(0.72 0.08 75)" }}
+                    >
+                      <span>進入工具</span>
+                      <ArrowRight size={12} className="transition-transform duration-300 group-hover:translate-x-1" />
                     </div>
                   </div>
                 </Link>

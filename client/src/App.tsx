@@ -10,9 +10,9 @@ import CopyWriter from "./pages/CopyWriter";
 import ImageEditor from "./pages/ImageEditor";
 import FeedbackBoard from "./pages/FeedbackBoard";
 import Radar from "./pages/Radar";
+import PurchasePage from "./pages/PurchasePage";
 import Layout from "./components/Layout";
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path="/" component={Home} />
@@ -21,6 +21,7 @@ function Router() {
       <Route path="/image" component={ImageEditor} />
       <Route path="/feedback" component={FeedbackBoard} />
       <Route path="/radar" component={Radar} />
+      <Route path="/purchase" component={PurchasePage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

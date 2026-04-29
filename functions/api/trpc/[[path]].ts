@@ -683,6 +683,12 @@ interface Env {
   OPENAI_API_KEY?: string;
   OPENAI_IMAGE_MODEL?: string;
   DB?: D1Database;
+  // ── 採購助手 + 賣家雷達（蹦闆精品 Abby 專區） ───────────────────────
+  ANTHROPIC_API_KEY?: string;
+  EAGLE_ABBY_PASSWORD?: string;   // 密碼，預設 Abby888
+  APIFY_API_TOKEN?: string;       // 賣家雷達用 Apify token
+  RADAR_CRON_TOKEN?: string;      // Cron 自動掃描用內部 token
+  EAGLE_RADAR_KV?: KVNamespace;  // 賣家雷達獨立 KV（絕不共用其他品牌）
 }
 
 interface Context {
@@ -1320,6 +1326,716 @@ const radarRouter = router({
     }),
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 蹦闆精品 Abby 專區 — purchaseRouter（精品包 AI 辨識）
+// 密碼守門由 _middleware.ts 的 eagle_abby_auth cookie 處理
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PURCHASE_CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
+const PURCHASE_CLAUDE_MODEL = 'claude-sonnet-4-6';
+const PURCHASE_BATCH_CONCURRENCY = 10;
+const PURCHASE_MAX_IMAGES = 60;
+
+const PURCHASE_SYSTEM_PROMPT = `
+你是蹦闆精品的資深採購辨識專家，專精 8 大頂級精品包鑑定。
+任務：分析照片，輸出標準化 JSON 採購資訊。
+
+## 8 大品牌辨識規則
+
+### 香奈兒（CHANEL）
+- 雙 C 交叉標識（兩個 C 互相交叉，一個正向一個反向）
+- 菱格紋縫線（Classic Flap / CF / 2.55 / Leboy / Boy）
+- 常見型號：Classic Flap / CF / 2.55 / Leboy / Boy / 19BAG / WOC / 22 / Coco Handle
+- 尺寸：特小（mini）/ 20公分 / 22公分 / 25公分 / 26公分 / 28公分 / 30公分 / 33公分
+- 卡片狀態：有卡 / 無卡（指原廠 authenticity card）
+- 開數：指縫線菱格數量（24開、25開、26開、27開、28開、30開）
+- 五金：金扣 / 銀扣 / 黑金扣
+
+### LV（Louis Vuitton）
+- 老花（Monogram）：LV 字樣 + 花葉滿版印花、咖啡色底
+- 棋盤格（Damier）：深咖 × 淺咖 / 黑 × 灰格紋
+- EPI 水波紋皮革：有明顯縱向波紋線條
+- Vernis 漆皮：光澤感強、壓花 LV
+- 序號：最重要特徵，印在皮革標籤上（格式：M或N開頭 + 5位數字，例：M45592）
+- 必抓序號，找到就放進 serial 欄位
+- 常見型號：SPEEDY / NEVERFULL / PASSY / STEAMER / ON THE GO / PETITE MALLE / WOC / ALMA / MULTI POCHETTE
+
+### 愛馬仕（Hermès）
+- 皮革質感極細緻，縫線工整，五金通常金色或銀色
+- 常見型號：BIRKIN / KELLY / PICOTIN / HERBAG / 依芙琳 / BOLIDE / LINDY / HALZAN / 菜籃子
+- 尺寸：25 / 28 / 30 / 35 / 40 / 在型號後標（例：HERBAG 39）
+- 框碼：刻印在五金零件上，格式為單一英文字母（A~Z，代表生產年份），找到就放進 features 陣列
+- 年份：框碼字母對應年份（A=1945/2017、B=1946/2018...可保守說「約XXXX年代」）
+- 刻印：職人個人印記（常見 B刻、G刻等），放進 features
+
+### DIOR（Christian Dior）
+- 老花（Oblique）：D/I/O/R 字母交錯斜紋
+- 常見型號：BOOK TOTE / SADDLE 馬鞍包 / 黛妃包（Lady Dior）/ BOBBY / 30 MONTAIGNE
+- 款型：迷你 / 小款 / 中款 / 大款
+- 扣件：D-JOUR / 旋轉扣 / 磁扣
+
+### GUCCI
+- 老花（GG）：雙 G 互扣標識滿版印花（米色底）
+- 堤花（GG Supreme）：更精緻的 GG 滿版
+- 竹節（Bamboo）把手
+- 常見型號：DIONYSUS / MARMONT / SOHO / Ophidia / 圓餅包 / 斜背包
+
+### YSL（Saint Laurent）
+- YSL 金屬扣環 / SAINT LAURENT 文字
+- 常見型號：NIKI / LOULOU / SADE / ENVELOPE / CASSANDRE / WOC
+- 款型：迷你 / 中款 / 大款
+
+### BV（Bottega Veneta）
+- 編織皮革（Intrecciato）：皮條交叉編織，無明顯 logo
+- 常見款型：CASSETTE / JODIE / ARCO / 雲朵包 / 對開夾（短夾 / 長夾）
+- 顏色是重要辨識點（多彩）
+
+### GOYARD
+- 字母 Y 加旗幟花紋滿版（Goyardine）印花
+- 常見：SAINT LOUIS 托特包 / ANJOU 兩用包
+- 特徵：滿版花紋 / 特定色
+
+---
+
+## 輸出格式（嚴格 JSON，不能有其他文字）
+
+\`\`\`json
+{
+  "brand": "品牌名（8大品牌之一，或'其他'）",
+  "model": "型號（例：19BAG / PASSY / HERBAG / BOY）",
+  "color": "顏色描述（例：黑金 / 黑 / 咖 / 棕 / 灰）",
+  "size": "尺寸或 null（例：'26公分' / '39' / '中款' / null）",
+  "serial": "序號或 null（LV 必填 M/N 開頭、愛馬仕框碼，其他品牌 null）",
+  "features": ["特徵陣列（例：'30開', '無卡', 'B刻', '2000年', '老花', '竹節'）"],
+  "confidence": 0.0到1.0之間的信心分數,
+  "reasoning": "一句話說明辨識依據（中文）"
+}
+\`\`\`
+
+## 嚴格規則
+
+1. 若照片模糊、光線差、角度奇怪導致無法辨識 → confidence 給 0.5 以下，不要瞎掰
+2. 只看得到一部分包包 → 如實描述可見部分，features 留空或說明
+3. LV 照片一定要找序號（標籤/熱壓印字），找到填入 serial，找不到才給 null
+4. 愛馬仕框碼（單一英文字母刻印）找到放進 features，例：'B刻' 或 '框D'
+5. 輸出純 JSON，絕對不能有說明文字、markdown 標記、或解釋
+6. 不確定品牌時 brand 填 '其他'，model 填看到的特徵描述
+`.trim();
+
+interface PurchaseRecognizeResult {
+  imageIndex: number;
+  brand: string;
+  model: string;
+  color: string;
+  size: string | null;
+  serial: string | null;
+  features: string[];
+  confidence: number;
+  formattedName: string;
+  costLog: string;
+  price: number | null;
+  error?: string;
+}
+
+function buildPurchaseFormattedName(
+  seq: number,
+  brand: string,
+  model: string,
+  color: string,
+  size: string | null,
+  serial: string | null,
+  features: string[],
+): string {
+  const f = features.join('');
+  switch (brand) {
+    case 'LV': {
+      const serialPart = serial ? ` ${serial}` : '';
+      return `${seq}.LV${model}/${color}${serialPart}`.trim();
+    }
+    case '愛馬仕': {
+      const sizePart = size ? ` ${size}` : '';
+      const colorPart = color ? `/${color}` : '';
+      const featPart = features.length > 0 ? `/${features.join('/')}` : '';
+      return `${seq}.愛馬仕${model}${sizePart}${colorPart}${featPart}`.trim();
+    }
+    case '香奈兒': {
+      const sizePart = size ? ` ${size}` : '';
+      const featPart = f ? ` ${f}` : '';
+      return `${seq}.香奈兒 ${model}/${color}${sizePart}${featPart}`.trim();
+    }
+    case 'DIOR': {
+      const featPart = features.length > 0 ? `/${features.join('')}` : '';
+      const colorPart = color ? `/${color}` : '';
+      return `${seq}.DIOR ${model}${colorPart}${featPart}`.trim();
+    }
+    case 'GUCCI': {
+      const colorPart = color ? `/${color}` : '';
+      return `${seq}.GUCCI${model}${colorPart}`.trim();
+    }
+    case 'YSL': {
+      const featPart = features.length > 0 ? `/${features.join('')}` : '';
+      const colorPart = color ? `/${color}` : '';
+      return `${seq}.YSL ${model}${colorPart}${featPart}`.trim();
+    }
+    case 'BV': {
+      const colorPart = color ? `/${color}` : '';
+      return `${seq}.BV${model}${colorPart}`.trim();
+    }
+    case 'GOYARD': {
+      const colorPart = color ? `/${color}` : '';
+      return `${seq}.GOYARD${model}${colorPart}`.trim();
+    }
+    default: {
+      const colorPart = color ? `/${color}` : '';
+      const sizePart = size ? `/${size}` : '';
+      return `${seq}.${brand}${model}${colorPart}${sizePart}`.trim();
+    }
+  }
+}
+
+async function recognizeOnePurchaseImage(
+  anthropicKey: string,
+  imageIndex: number,
+  imageData: string,
+): Promise<PurchaseRecognizeResult> {
+  let base64Data = imageData;
+  let mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' = 'image/jpeg';
+
+  if (imageData.startsWith('data:')) {
+    const match = imageData.match(/^data:(image\/[^;]+);base64,(.+)$/);
+    if (match) {
+      const mimeRaw = match[1] as string;
+      if (
+        mimeRaw === 'image/jpeg' ||
+        mimeRaw === 'image/png' ||
+        mimeRaw === 'image/gif' ||
+        mimeRaw === 'image/webp'
+      ) {
+        mediaType = mimeRaw;
+      }
+      base64Data = match[2] as string;
+    }
+  }
+
+  const estimatedInputTokens = 2000;
+  const estimatedOutputTokens = 200;
+  const estimatedCostNTD = (
+    (estimatedInputTokens * 3 + estimatedOutputTokens * 15) / 1_000_000 * 32
+  ).toFixed(2);
+
+  const costLog = `[COST] image[${imageIndex}] ~${estimatedInputTokens}in+${estimatedOutputTokens}out tokens ≈ NT$${estimatedCostNTD}`;
+
+  let rawJson = '';
+  try {
+    const response = await fetch(PURCHASE_CLAUDE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: PURCHASE_CLAUDE_MODEL,
+        max_tokens: 512,
+        system: PURCHASE_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data,
+                },
+              },
+              {
+                type: 'text',
+                text: '請辨識這個精品包，輸出 JSON。',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[Purchase] Claude 錯誤 image[${imageIndex}]:`, errText);
+      return {
+        imageIndex,
+        brand: '辨識失敗',
+        model: '',
+        color: '',
+        size: null,
+        serial: null,
+        features: [],
+        confidence: 0,
+        formattedName: `${imageIndex + 1}.辨識失敗`,
+        costLog,
+        price: null,
+        error: `Claude API 錯誤 (${response.status})`,
+      };
+    }
+
+    const data = await response.json() as { content?: Array<{ text?: string }> };
+    rawJson = data?.content?.[0]?.text || '';
+
+    const jsonMatch = rawJson.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`無法解析 JSON: ${rawJson.slice(0, 200)}`);
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const brand: string = (parsed.brand as string) || '其他';
+    const model: string = (parsed.model as string) || '';
+    const color: string = (parsed.color as string) || '';
+    const size: string | null = (parsed.size as string) || null;
+    const serial: string | null = (parsed.serial as string) || null;
+    const features: string[] = Array.isArray(parsed.features) ? (parsed.features as string[]) : [];
+    const confidence: number = typeof parsed.confidence === 'number'
+      ? Math.min(1, Math.max(0, parsed.confidence as number))
+      : 0.5;
+
+    const formattedName = buildPurchaseFormattedName(
+      imageIndex + 1,
+      brand,
+      model,
+      color,
+      size,
+      serial,
+      features,
+    );
+
+    console.log(costLog);
+    return { imageIndex, brand, model, color, size, serial, features, confidence, formattedName, costLog, price: null };
+
+  } catch (err) {
+    console.error(`[Purchase] 解析錯誤 image[${imageIndex}]:`, err, 'rawJson:', rawJson.slice(0, 300));
+    return {
+      imageIndex,
+      brand: '解析錯誤',
+      model: '',
+      color: '',
+      size: null,
+      serial: null,
+      features: [],
+      confidence: 0,
+      formattedName: `${imageIndex + 1}.解析錯誤`,
+      costLog,
+      price: null,
+      error: String(err),
+    };
+  }
+}
+
+const purchaseRouter = router({
+  /**
+   * 批次辨識精品包照片
+   * input:  { images: string[] }  — base64 或 data URL，上限 60 張
+   * output: { results, totalCostLog, imageCount }
+   */
+  batchRecognize: publicProcedure
+    .input(
+      z.object({
+        images: z
+          .array(z.string().min(1))
+          .min(1, '至少上傳 1 張照片')
+          .max(PURCHASE_MAX_IMAGES, `單次最多 ${PURCHASE_MAX_IMAGES} 張（成本控制）`),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const anthropicKey = (ctx as unknown as { env: Env }).env?.ANTHROPIC_API_KEY;
+      if (!anthropicKey) {
+        throw new Error('ANTHROPIC_API_KEY 未設定，請在 Cloudflare Pages 後台環境變數中配置');
+      }
+
+      const { images } = input;
+      console.log(`[Purchase] 開始辨識 ${images.length} 張照片`);
+
+      const allResults: PurchaseRecognizeResult[] = new Array(images.length);
+
+      for (let batchStart = 0; batchStart < images.length; batchStart += PURCHASE_BATCH_CONCURRENCY) {
+        const batchEnd = Math.min(batchStart + PURCHASE_BATCH_CONCURRENCY, images.length);
+        const batchImages = images.slice(batchStart, batchEnd);
+
+        const batchPromises = batchImages.map((imgData, localIdx) =>
+          recognizeOnePurchaseImage(anthropicKey, batchStart + localIdx, imgData),
+        );
+
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach((r) => {
+          allResults[r.imageIndex] = r;
+        });
+
+        console.log(`[Purchase] 批次 ${batchStart + 1}-${batchEnd} 完成`);
+      }
+
+      const totalCostNTD = allResults.reduce((sum, r) => {
+        const match = r.costLog.match(/NT\$([0-9.]+)/);
+        return sum + (match?.[1] ? parseFloat(match[1]) : 0);
+      }, 0);
+
+      const totalCostLog = `[COST TOTAL] ${images.length} 張 ≈ NT$${totalCostNTD.toFixed(2)}`;
+      console.log(totalCostLog);
+
+      return {
+        results: allResults,
+        totalCostLog,
+        imageCount: images.length,
+      };
+    }),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 蹦闆精品 Abby 專區 — eagleRadarRouter（賣家雷達 Threads 掃描）
+// KV: EAGLE_RADAR_KV（獨立、絕不共用其他品牌 KV）
+// Apify token: APIFY_API_TOKEN
+// 月預算上限: NT$3,500
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface EagleRadarPost {
+  id: string;
+  postUrl: string;
+  author: string;
+  authorId?: string;
+  content: string;
+  scrapedAt: string;
+  status: 'pending' | 'contacted' | 'matched' | 'rejected';
+  source: 'threads';
+  keyword: string;
+}
+
+interface ApifyThreadsItem {
+  id?: string;
+  url?: string;
+  username?: string;
+  userId?: string;
+  text?: string;
+  timestamp?: string;
+  createdAt?: string;
+}
+
+const EAGLE_RADAR_DEFAULT_KEYWORDS = [
+  '想賣 包包',
+  '出售 LV',
+  '出售 香奈兒',
+  '出售 愛馬仕',
+  '二手 LV',
+  '二手 香奈兒',
+  '二手 愛馬仕',
+  '二手 名牌包',
+] as const;
+
+const EAGLE_RADAR_APIFY_URL =
+  'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/run-sync-get-dataset-items';
+const EAGLE_RADAR_MAX_RESULTS_PER_KW = 30;
+const EAGLE_RADAR_DEFAULT_BUDGET_NTD = 3500;
+const EAGLE_RADAR_POST_TTL = 30 * 24 * 60 * 60;
+const EAGLE_RADAR_DEDUP_TTL = 24 * 60 * 60;
+
+function getEagleRadarYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function calcEagleRadarCostNTD(scannedCount: number): number {
+  return Math.ceil(scannedCount / 100);
+}
+
+async function getEagleRadarCostThisMonthRaw(kv: KVNamespace): Promise<number> {
+  const ym = getEagleRadarYearMonth();
+  const val = await kv.get(`cost:${ym}`);
+  return val ? parseInt(val, 10) : 0;
+}
+
+async function getEagleRadarBudget(kv: KVNamespace): Promise<number> {
+  const val = await kv.get('budget');
+  return val ? parseInt(val, 10) : EAGLE_RADAR_DEFAULT_BUDGET_NTD;
+}
+
+async function accumulateEagleRadarCost(kv: KVNamespace, costNTD: number): Promise<number> {
+  const ym = getEagleRadarYearMonth();
+  const key = `cost:${ym}`;
+  const current = await kv.get(key);
+  const prev = current ? parseInt(current, 10) : 0;
+  const next = prev + costNTD;
+  await kv.put(key, String(next));
+  return next;
+}
+
+function eagleRadarContentFingerprint(content: string): string {
+  return content.trim().slice(0, 50).replace(/\s+/g, ' ');
+}
+
+async function fetchEagleRadarThreadsKeyword(
+  apifyToken: string,
+  keyword: string,
+): Promise<ApifyThreadsItem[]> {
+  const url = `${EAGLE_RADAR_APIFY_URL}?token=${apifyToken}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      keyword,
+      maxResults: EAGLE_RADAR_MAX_RESULTS_PER_KW,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Apify API 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const items = await res.json() as ApifyThreadsItem[];
+  return Array.isArray(items) ? items : [];
+}
+
+function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPost | null {
+  const rawId = item.id || item.url || null;
+  if (!rawId) return null;
+
+  const author = item.username || 'unknown';
+  const content = (item.text || '').trim();
+  if (!content) return null;
+
+  const postUrl = item.url || `https://www.threads.com/p/${rawId}`;
+  const scrapedAt = new Date().toISOString();
+  const threadsId = rawId.replace(/^https?:\/\/.*\/p\//, '').replace(/\/$/, '');
+
+  return {
+    id: `threads:${threadsId}`,
+    postUrl,
+    author,
+    authorId: item.userId || undefined,
+    content,
+    scrapedAt,
+    status: 'pending',
+    source: 'threads',
+    keyword,
+  };
+}
+
+const eagleRadarRouter = router({
+  /**
+   * scanNow — 立即掃描 Threads（手動觸發或 Cron 呼叫）
+   * input:  { keywords?: string[] }（不指定就用預設 8 組）
+   * output: { scanned, newCount, costThisRun, costMonth, skippedBudget }
+   */
+  scanNow: publicProcedure
+    .input(
+      z.object({
+        keywords: z.array(z.string().min(1)).optional(),
+      }).optional(),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const kv: KVNamespace | undefined = env?.EAGLE_RADAR_KV;
+      const apifyToken: string | undefined = env?.APIFY_API_TOKEN;
+
+      if (!kv) {
+        throw new Error('EAGLE_RADAR_KV 未綁定，請在 CF Dashboard 設定 KV namespace');
+      }
+      if (!apifyToken) {
+        throw new Error('APIFY_API_TOKEN 未設定，請在 CF Dashboard 後台環境變數中配置');
+      }
+
+      const [costMonth, budget] = await Promise.all([
+        getEagleRadarCostThisMonthRaw(kv),
+        getEagleRadarBudget(kv),
+      ]);
+
+      if (costMonth >= budget) {
+        console.warn(`[EagleRadar] 本月費用 NT$${costMonth} 已超過預算 NT$${budget}，停止掃描`);
+        return {
+          scanned: 0,
+          newCount: 0,
+          costThisRun: 0,
+          costMonth,
+          skippedBudget: true,
+          warning: `本月費用 NT$${costMonth} 已達預算 NT$${budget}，請調整預算或等下個月`,
+        };
+      }
+
+      const keywords = input?.keywords?.length
+        ? input.keywords
+        : [...EAGLE_RADAR_DEFAULT_KEYWORDS];
+
+      console.log(`[EagleRadar] 開始掃描 ${keywords.length} 組關鍵字`);
+
+      let totalScanned = 0;
+      let newCount = 0;
+      const errors: string[] = [];
+
+      for (const keyword of keywords) {
+        const currentCost = await getEagleRadarCostThisMonthRaw(kv);
+        if (currentCost >= budget) {
+          console.warn(`[EagleRadar] 掃到一半預算滿了（${currentCost} >= ${budget}），提前結束`);
+          break;
+        }
+
+        try {
+          const items = await fetchEagleRadarThreadsKeyword(apifyToken, keyword);
+          console.log(`[EagleRadar] keyword="${keyword}" → ${items.length} 筆`);
+          totalScanned += items.length;
+
+          for (const item of items) {
+            const post = toEagleRadarPost(item, keyword);
+            if (!post) continue;
+
+            const existingRaw = await kv.get(post.id);
+            if (existingRaw) {
+              const existing = JSON.parse(existingRaw) as EagleRadarPost;
+              const updated: EagleRadarPost = { ...post, status: existing.status };
+              await kv.put(post.id, JSON.stringify(updated), {
+                expirationTtl: EAGLE_RADAR_POST_TTL,
+              });
+              continue;
+            }
+
+            const dedupKey = `dedup:${post.author}:${eagleRadarContentFingerprint(post.content)}`;
+            const isDup = await kv.get(dedupKey);
+            if (isDup) {
+              console.log(`[EagleRadar] 去重命中 author=${post.author}`);
+              continue;
+            }
+
+            await kv.put(post.id, JSON.stringify(post), {
+              expirationTtl: EAGLE_RADAR_POST_TTL,
+            });
+            await kv.put(dedupKey, '1', { expirationTtl: EAGLE_RADAR_DEDUP_TTL });
+            newCount++;
+          }
+        } catch (err) {
+          const msg = `keyword="${keyword}" 錯誤: ${String(err)}`;
+          console.error(`[EagleRadar] ${msg}`);
+          errors.push(msg);
+        }
+      }
+
+      const costThisRun = calcEagleRadarCostNTD(totalScanned);
+      const newCostMonth = await accumulateEagleRadarCost(kv, costThisRun);
+      await kv.put('scan:lastRun', new Date().toISOString());
+
+      if (newCostMonth >= budget) {
+        console.warn(`[EagleRadar] 掃描後費用 NT$${newCostMonth} 達預算 NT$${budget}`);
+      }
+
+      console.log(`[EagleRadar] 完成：scanned=${totalScanned}, new=${newCount}, cost=NT$${costThisRun}, 月累計=NT$${newCostMonth}`);
+
+      return {
+        scanned: totalScanned,
+        newCount,
+        costThisRun,
+        costMonth: newCostMonth,
+        skippedBudget: false,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+    }),
+
+  /**
+   * listPending — 列出雷達清單
+   * input:  { status?: 'pending'|'contacted'|'matched'|'rejected'|'all' }
+   * output: EagleRadarPost[]（按 scrapedAt 倒序，限 50 筆）
+   */
+  listPending: publicProcedure
+    .input(
+      z.object({
+        status: z.enum(['pending', 'contacted', 'matched', 'rejected', 'all']).default('pending'),
+      }).optional(),
+    )
+    .query(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const kv: KVNamespace | undefined = env?.EAGLE_RADAR_KV;
+
+      if (!kv) {
+        throw new Error('EAGLE_RADAR_KV 未綁定');
+      }
+
+      const targetStatus = input?.status ?? 'pending';
+      const listResult = await kv.list({ prefix: 'threads:', limit: 500 });
+      const posts: EagleRadarPost[] = [];
+
+      for (const key of listResult.keys) {
+        const raw = await kv.get(key.name);
+        if (!raw) continue;
+        try {
+          const post = JSON.parse(raw) as EagleRadarPost;
+          if (targetStatus === 'all' || post.status === targetStatus) {
+            posts.push(post);
+          }
+        } catch {
+          // 壞資料跳過
+        }
+      }
+
+      posts.sort((a, b) => b.scrapedAt.localeCompare(a.scrapedAt));
+      return posts.slice(0, 50);
+    }),
+
+  /**
+   * updateStatus — 更新單筆狀態
+   */
+  updateStatus: publicProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        status: z.enum(['pending', 'contacted', 'matched', 'rejected']),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const kv: KVNamespace | undefined = env?.EAGLE_RADAR_KV;
+
+      if (!kv) {
+        throw new Error('EAGLE_RADAR_KV 未綁定');
+      }
+
+      const raw = await kv.get(input.id);
+      if (!raw) {
+        throw new Error(`找不到 post id=${input.id}`);
+      }
+
+      const post = JSON.parse(raw) as EagleRadarPost;
+      const updated: EagleRadarPost = { ...post, status: input.status };
+
+      await kv.put(input.id, JSON.stringify(updated), {
+        expirationTtl: EAGLE_RADAR_POST_TTL,
+      });
+
+      return { ok: true, id: input.id, status: input.status };
+    }),
+
+  /**
+   * getCostThisMonth — 本月費用 + 預算狀態
+   */
+  getCostThisMonth: publicProcedure
+    .query(async ({ ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const kv: KVNamespace | undefined = env?.EAGLE_RADAR_KV;
+
+      if (!kv) {
+        throw new Error('EAGLE_RADAR_KV 未綁定');
+      }
+
+      const [costMonth, budget, lastRun] = await Promise.all([
+        getEagleRadarCostThisMonthRaw(kv),
+        getEagleRadarBudget(kv),
+        kv.get('scan:lastRun'),
+      ]);
+
+      const percentUsed = budget > 0 ? Math.round((costMonth / budget) * 100) : 0;
+
+      return {
+        costMonth,
+        budget,
+        percentUsed,
+        lastRun: lastRun || null,
+      };
+    }),
+});
+
 // ─── tRPC Routes ──────────────────────────────────────────────────────────────
 
 const appRouter = router({
@@ -1633,6 +2349,20 @@ ${input.originalText}
   }),
 
   radar: radarRouter,
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 採購助手（蹦闆精品 Abby 專區）
+  // ─ 受 middleware 密碼守門（eagle_abby_auth cookie）
+  // ─ 辨識精品包照片、批次 Claude Sonnet vision
+  // ══════════════════════════════════════════════════════════════════════════
+  purchase: purchaseRouter,
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 賣家雷達（蹦闆精品 Abby 專區）
+  // ─ 受 middleware 密碼守門（eagle_abby_auth cookie）
+  // ─ Apify Threads 關鍵字掃描、KV 入庫、預算守門
+  // ══════════════════════════════════════════════════════════════════════════
+  eagleRadar: eagleRadarRouter,
 });
 
 export type AppRouter = typeof appRouter;
