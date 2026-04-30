@@ -1414,48 +1414,71 @@ const PURCHASE_SYSTEM_PROMPT = `
 
 ---
 
+## 材質辨識（重要、新增）
+
+每個品牌的材質詞彙——AI 一定要識別並輸出 \`material\` 欄：
+
+- **LV 紋路（材質類）**：老花（Monogram）/ 棋盤格（Damier）/ 壓紋（Empreinte 浮雕）/ 水波紋（Epi）/ 漆皮（Vernis）/ 拼皮（撞色拼接）/ 牛仔（Denim）
+- **香奈兒皮革**：小羊皮（Lambskin）/ 荔枝皮（Caviar 魚子醬）/ 山羊皮 / 蟒蛇皮 / 山型紋（Chevron）
+- **愛馬仕皮革**：Togo / Clemence / Epsom / Swift / Box / Fjord / Barenia / 帆布（Toile）
+- **GUCCI 紋路**：提花（GG Supreme）/ 緹花（Jacquard）/ 壓紋（Embossed）/ 帆布（Canvas）/ 全皮革
+- **DIOR 紋路**：老花（Oblique）/ 藤格紋（Cannage）/ 全皮革 / 鑽石款（Macrocannage）/ 油蠟皮
+- **PRADA**：尼龍（Re-Nylon）/ Saffiano（鋸齒紋皮革）/ 全皮革
+- **BV**：編織皮革（Intrecciato）/ 全皮革
+- **GOYARD**：滿版花紋（Goyardine）
+- **BURBERRY**：經典格紋 / 尼龍 / 全皮革
+- **其他**：看不出材質就填空字串 ""
+
 ## 輸出格式（嚴格 JSON、不能有 markdown 或其他文字）
 
 \`\`\`json
 {
-  "brand": "<品牌中文簡稱、不加英文括號、例：'香奈兒' / 'LV' / '愛馬仕' / 'DIOR' / 'GUCCI' / 'YSL' / 'BV' / 'GOYARD' / '巴黎世家' / 'LOEWE' / 'FENDI' / 'PRADA' / 'CELINE' / 'BURBERRY' / 'CHLOE' / 'MIUMIU' / '寶格麗' / '其他'>",
-  "model": "<型號或型號描述、可含紋路與款型、例：'老花PASSY新款郵差包' / '19BAG' / 'BIRKIN 30' / 'NIKI'>",
-  "color": "<顏色描述、可含主色+輔色、例：'黑金' / '黑' / '咖' / '棕' / '灰'>",
-  "size": "<尺寸或 null、例：'26公分' / '39' / 'MM' / '中款' / null>",
-  "serial": "<序號或 null、LV 必填 M/N 開頭，其他品牌通常 null>",
-  "features": ["<特徵陣列、例：'30開', '無卡', '芯片', 'B刻', '2000年', '老花', '竹節', 'Togo'>"],
+  "brand": "<品牌中文簡稱、不加英文括號>",
+  "material": "<材質、譬如 '老花' / '小羊皮' / 'Togo' / '編織' / '尼龍' / '提花'、看不清留空 ''>",
+  "size": "<大小、譬如 '小款' / '中款' / '26公分' / '30公分' / 'MM' / 'PM' / 'GM' / 'BB' / null>",
+  "model": "<型號（產品名稱）、譬如 '19BAG' / 'PASSY新款郵差包' / 'BIRKIN' / 'NIKI' / '黛妃包' / '蛇頭包'。**型號不確定就留空字串 ''**、不要瞎猜。看不到序號或產品標籤、又不認得就留空。>",
+  "color": "<顏色、譬如 '黑金' / '黑' / '咖' / '棕'>",
+  "serial": "<序號或 null、LV 必填 M/N 開頭、其他品牌通常 null>",
+  "features": ["<特色陣列、譬如 '雙C金扣', '混色鏈條', '30開', '無卡', '芯片', '框D', '2000年', '金扣', '雙提把', '拉鍊開口', '男款'>"],
   "confidence": <0.0 到 1.0 之間的信心分數>,
-  "productName": "<不含開頭編號的完整商品名稱字串、嚴格仿照蹦闆 Excel 命名習慣、AI 自己組（範例見下）>",
+  "productName": "<不含編號的完整商品名稱、AI 自己組、嚴格按下面命名順序>",
   "reasoning": "<一句話說明辨識依據>"
 }
 \`\`\`
 
-## productName 命名範例（嚴格仿照蹦闆 Excel 真實寫法）
+## productName 命名順序（**主公新規則 2026-04-30 拍板**）
 
-| 真實 Excel 範例 | productName 對應 |
+順序固定：**品牌 → 材質 → 大小 → 型號 → 顏色 → 序號 → 特色串**
+
+範例：
+| 商品 | productName |
 |---|---|
-| 1.GUCCI堤花圓餅包 | GUCCI堤花圓餅包 |
-| 2.愛馬仕HERBAG 39/黑 框D/2000年 | 愛馬仕HERBAG 39/黑 框D/2000年 |
-| 3.DIOR 5格黛妃包/黑 | DIOR 5格黛妃包/黑 |
-| 4.LV老花PASSY新款郵差包/咖 M45592 | LV老花PASSY新款郵差包/咖 M45592 |
-| 15.香奈兒 19BAG/黑金 26公分 30開無卡 | 香奈兒 19BAG/黑金 26公分 30開無卡 |
-| 21.LV NIGO手提包 N40355 | LV NIGO手提包 N40355 |
-| 38.愛馬仕 Birkin 30/灰 X刻2016年 金扣 Togo | 愛馬仕 Birkin 30/灰 X刻2016年 金扣 Togo |
-| 70.香奈兒 19BAG/黑金 28開無卡 | 香奈兒 19BAG/黑金 28開無卡 |
-| 73.香奈兒 金球 Classic Flap Mini 20/奶茶色金扣 芯片 | 香奈兒 金球 Classic Flap Mini 20/奶茶色金扣 芯片 |
-| 14.YSL NIKI /中款/黑 | YSL NIKI /中款/黑 |
-| 19.BV編織對開短夾/灰 | BV編織對開短夾/灰 |
+| 香奈兒 19BAG 黑 小羊皮 | \`香奈兒 小羊皮 小款 19BAG/黑 雙C金扣 混色鏈條\` |
+| LV PASSY 老花 咖色 | \`LV 老花 30公分 PASSY新款郵差包/咖 M45592\` |
+| 愛馬仕 BIRKIN 30 灰 Togo | \`愛馬仕 Togo 30 BIRKIN/灰 X刻 2016年 金扣\` |
+| GUCCI 圓餅包 提花 | \`GUCCI 提花 圓餅包\`（GUCCI 沒大小就跳過） |
+| BV 對開短夾 編織 灰 | \`BV 編織 短款 對開短夾/灰\` |
+| DIOR BOOK TOTE 老花 中款 | \`DIOR 老花 中款 BOOK TOTE\` |
+| YSL NIKI 中款 黑 | \`YSL 牛皮 中款 NIKI/黑\` |
+| GOYARD 托特包 滿版 綠 | \`GOYARD 滿版花紋 托特包/綠\` |
+| 巴黎世家 機車包 鱷魚紋 黑 | \`巴黎世家 鱷魚紋 S號 沙漏包/黑\` |
 
-**productName 規則歸納**：
-1. **不要加開頭編號**（編號由後端統一處理）
-2. **品牌**用中文簡稱、不加英文括號（譬如「香奈兒」不是「香奈兒（CHANEL）」）
-3. **品牌跟型號之間**：LV / GUCCI / BV / DIOR / GOYARD / YSL 沒空格直連型號（GUCCI堤花圓餅包）；香奈兒 / 愛馬仕通常加一個空格（香奈兒 19BAG）
-4. **顏色用 / 分隔**（/咖、/黑、/黑金）
-5. **尺寸 / 序號 / 特徵**用空格連續寫、不用 / 分隔（譬如 26公分 30開無卡 / 框D 2000年 金扣 Togo）
-6. **LV 序號**寫在最後、跟其他特徵用空格分隔（M45592 / N62227）
-7. **款型 MM / PM / GM**寫在型號或顏色後（譬如 ON THE GO/MM、Mini 20）
-8. **金球 / 山型紋**等特徵當型號的一部分（香奈兒 金球 Classic Flap Mini 20）
-9. **看到什麼寫什麼**——蹦闆風格簡潔不冗、不要硬塞「約」「大概」這種模糊詞
+**型號不確定的情況**：
+| 商品 | productName |
+|---|---|
+| 看不出 LV 具體型號（沒序號、無標籤） | \`LV 老花 中款 /咖\`（型號留空、用 / 分隔顏色） |
+| 香奈兒能看到型號但不確定（無芯片無卡） | \`香奈兒 小羊皮 26公分 /黑金 30開\`（型號留空） |
+
+**productName 規則**：
+1. 不要加開頭編號（編號由後端拼）
+2. 品牌用中文簡稱、不加英文括號（「香奈兒」不是「香奈兒（CHANEL）」）
+3. 各元素用**空格**分隔
+4. 顏色前用 \`/\` 分隔（譬如 \`/黑\`、\`/咖\`、\`/黑金\`）
+5. 序號跟其他特色直接用空格（譬如 \`M45592\` 後面接 \`金扣\`）
+6. **某元素沒有就跳過、不要佔位**（譬如 GUCCI 沒大小就直接寫 \`GUCCI 提花 圓餅包\`）
+7. **型號不確定**留空、留 / 接顏色
+8. 特色串放最後、用空格連寫
+9. 「看到什麼寫什麼」——簡潔不冗、不要硬塞「約」「大概」這種模糊詞
 
 ## 嚴格規則
 
@@ -1463,21 +1486,23 @@ const PURCHASE_SYSTEM_PROMPT = `
 2. 只看得到一部分包包 → 如實描述可見部分、features 留空或說明
 3. LV 一定要找序號（標籤 / 熱壓印字）、找到填 serial、找不到才 null
 4. 愛馬仕框碼（單一英文字母刻印）找到放進 features、例：'B刻' / '框D'
-5. 輸出純 JSON、絕對不能有 markdown 標記、解釋文字、或前後 prefix
-6. 不確定品牌時 brand 填 '其他'、productName 寫看到的描述
-7. **productName 必填**——AI 一定要組出符合範例風格的字串
+5. **型號不確定就留空 ""、不要瞎猜**——主公明示「沒有也沒關係」
+6. 輸出純 JSON、絕對不能有 markdown 標記、解釋文字、或前後 prefix
+7. 不確定品牌時 brand 填 '其他'、productName 寫看到的描述
+8. **productName 必填**——AI 一定要組出符合命名順序的字串
 `.trim();
 
 interface PurchaseRecognizeResult {
   imageIndex: number;
   brand: string;
-  model: string;
+  material: string;          // 主公 2026-04-30 加：材質（譬如 '老花' / '小羊皮' / 'Togo' / '編織' / '尼龍'）
+  model: string;             // 型號（不確定就空字串、主公規則：沒有也沒關係）
   color: string;
   size: string | null;
   serial: string | null;
   features: string[];
   confidence: number;
-  productName: string;       // AI 直接生成（不含開頭編號）、對齊蹦闆 Excel 命名習慣
+  productName: string;       // AI 直接生成（不含開頭編號）、命名順序：品牌 → 材質 → 大小 → 型號 → 顏色 → 序號 → 特色
   formattedName: string;     // 含編號的完整字串（{seq}.{productName}）
   costLog: string;
   price: number | null;
@@ -1627,6 +1652,7 @@ async function recognizeOnePurchaseImage(
       return {
         imageIndex,
         brand: '辨識失敗',
+        material: '',
         model: '',
         color: '',
         size: null,
@@ -1651,6 +1677,7 @@ async function recognizeOnePurchaseImage(
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     const brand: string = (parsed.brand as string) || '其他';
+    const material: string = ((parsed.material as string) || '').trim();
     const model: string = (parsed.model as string) || '';
     const color: string = (parsed.color as string) || '';
     const size: string | null = (parsed.size as string) || null;
@@ -1673,13 +1700,14 @@ async function recognizeOnePurchaseImage(
     );
 
     console.log(costLog);
-    return { imageIndex, brand, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null };
+    return { imageIndex, brand, material, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null };
 
   } catch (err) {
     console.error(`[Purchase] 解析錯誤 image[${imageIndex}]:`, err, 'rawJson:', rawJson.slice(0, 300));
     return {
       imageIndex,
       brand: '解析錯誤',
+      material: '',
       model: '',
       color: '',
       size: null,
