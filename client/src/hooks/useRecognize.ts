@@ -23,8 +23,9 @@ export interface RecognizeResult {
 }
 
 export interface EditableResult extends RecognizeResult {
-  id: string            // 對應 DropFile.id
-  arrivalDate?: string  // 每筆獨立到貨日期（前端 state，不送後端）
+  id: string             // 對應 DropFile.id
+  arrivalDate?: string   // 每筆獨立到貨日期（前端 state，不送後端）
+  productName?: string   // 可覆寫的商品名稱（Abby 手動修改，預設等於 formattedName）
 }
 
 function readFileAsDataURL(file: File): Promise<string> {
@@ -69,7 +70,7 @@ export function useRecognize() {
           allResults.push({
             id: f.id,
             imageIndex: start + localIdx,
-            brand: '辨識失敗',
+            brand: 'OTHER',
             model: '',
             color: '',
             size: null,
@@ -77,6 +78,7 @@ export function useRecognize() {
             features: [],
             confidence: 0,
             formattedName: `${start + localIdx + 1}.辨識失敗`,
+            productName: `${start + localIdx + 1}.辨識失敗`,
             price: null,
             costLog: '',
             error: errMsg,
@@ -91,6 +93,7 @@ export function useRecognize() {
           ...r,
           id: batch[localIdx]!.id,
           imageIndex: start + localIdx,
+          productName: r.formattedName,  // 初始值等於 AI formattedName，Abby 可直接改
         })
       })
 
@@ -109,7 +112,9 @@ export function useRecognize() {
     setResults(prev => prev.map(r => {
       if (r.id !== id) return r
       const updated = { ...r, ...patch }
-      if (!('formattedName' in patch)) {
+      // 若 patch 裡沒有 productName 且也沒有直接設 formattedName，
+      // 則重建 formattedName（供內部顯示用），但 productName 若 Abby 已手動改過就保留
+      if (!('formattedName' in patch) && !('productName' in patch)) {
         updated.formattedName = buildFormattedName(
           updated.imageIndex + 1,
           updated.brand,
@@ -119,6 +124,10 @@ export function useRecognize() {
           updated.serial,
           updated.features,
         )
+        // 若 productName 尚未被手動覆寫（仍等於舊 formattedName），同步更新
+        if (r.productName === r.formattedName) {
+          updated.productName = updated.formattedName
+        }
       }
       return updated
     }))

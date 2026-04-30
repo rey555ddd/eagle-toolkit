@@ -182,12 +182,12 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleSave = () => {
     if (results.length === 0) { toast.error('沒有辨識結果可儲存'); return }
-    // CSV：品牌,材質,型號,顏色,尺寸,序號,特徵,價格,到貨日期,商品名稱,信心度
-    const header = '品牌,材質,型號,顏色,尺寸,序號,特徵,價格(NT$),到貨日期,商品名稱,信心度\n'
-    const rows = results.map(r =>
-      [r.brand, r.material ?? '', r.model, r.color, r.size ?? '', r.serial ?? '',
-       r.features.join('/'), r.price ?? '', r.arrivalDate ?? '',
-       r.formattedName, `${Math.round(r.confidence * 100)}%`].join(',')
+    // CSV 欄位順序（2026-04-30 主公拍板）：編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)
+    const header = '編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)\n'
+    const rows = results.map((r, idx) =>
+      [idx + 1, r.arrivalDate ?? '', r.brand, r.model,
+       r.productName ?? r.formattedName, r.color, r.size ?? '',
+       r.features.join('/'), r.price ?? ''].join(',')
     ).join('\n')
     const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)

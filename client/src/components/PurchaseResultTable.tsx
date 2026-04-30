@@ -1,19 +1,38 @@
 /**
  * 採購辨識結果表格 — eagle-toolkit 版
- * - 每欄可直接編輯
+ * 欄位順序（2026-04-30 主公拍板）：
+ *   縮圖 / 編號 / 到貨日期 / 品牌 / 型號 / 商品名稱(可編輯) / 顏色 / 尺寸 / 特徵 / 價格 NT$
+ * - 材質欄已移除（AI 仍辨識、包在商品名稱字串裡）
+ * - 品牌 dropdown 全英文
+ * - 商品名稱直接可編輯（Abby 可改）
  * - confidence < 0.7 → 整列橘色邊框警示
- * - 縮圖從 dropFiles 取 previewUrl（140px，點擊全尺寸 modal）
- * - 包含價格欄（Abby 手 key）
- * - 材質欄（韓信後端 material 欄，可編輯）
- * - 每筆獨立到貨日期（前端 state）
  */
 import { useState, useEffect } from 'react'
-import { AlertTriangle, ChevronDown, X } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import type { EditableResult } from '@/hooks/useRecognize'
 import type { DropFile } from '@/hooks/useDropzone'
 import { FeatureTagEditor } from './FeatureTagEditor'
 
-const LUXURY_BRANDS = ['香奈兒', 'LV', '愛馬仕', 'DIOR', 'GUCCI', 'YSL', 'BV', 'GOYARD', '其他'] as const
+const BRAND_OPTIONS = [
+  'CHANEL',
+  'LV',
+  'HERMES',
+  'DIOR',
+  'GUCCI',
+  'YSL',
+  'BV',
+  'GOYARD',
+  'BALENCIAGA',
+  'LOEWE',
+  'FENDI',
+  'PRADA',
+  'CELINE',
+  'BURBERRY',
+  'CHLOE',
+  'MIUMIU',
+  'BVLGARI',
+  'OTHER',
+] as const
 
 interface PurchaseResultTableProps {
   results: EditableResult[]
@@ -43,6 +62,8 @@ const INPUT_STYLE: React.CSSProperties = {
   outline: 'none',
 }
 
+const HEADERS = ['縮圖', '編號', '到貨日期', '品牌', '型號', '商品名稱', '顏色', '尺寸', '特徵', '價格 NT$']
+
 export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseResultTableProps) {
   const fileMap = new Map(dropFiles.map(f => [f.id, f]))
 
@@ -51,7 +72,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
       <table className="min-w-full text-sm">
         <thead>
           <tr style={{ borderBottom: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
-            {['縮圖', '品牌', '材質', '型號', '顏色', '尺寸', '特徵', '價格 NT$', '到貨日期', '商品名稱', '信心'].map(h => (
+            {HEADERS.map(h => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={{ color: 'oklch(0.55 0.02 60)' }}>
                 {h}
               </th>
@@ -59,7 +80,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
           </tr>
         </thead>
         <tbody>
-          {results.map(r => {
+          {results.map((r, index) => {
             const df = fileMap.get(r.id)
             const lowConf = r.confidence < 0.7
 
@@ -83,31 +104,37 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   )}
                 </td>
 
-                {/* 品牌 select */}
+                {/* 編號 — 自動帶 index+1，唯讀 */}
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className="text-xs font-medium tabular-nums" style={{ color: 'oklch(0.45 0.02 60)' }}>
+                    {index + 1}
+                  </span>
+                </td>
+
+                {/* 到貨日期 — 每筆獨立 */}
+                <td className="px-3 py-2">
+                  <input
+                    type="date"
+                    value={r.arrivalDate ?? ''}
+                    onChange={e => onUpdate(r.id, { arrivalDate: e.target.value || undefined })}
+                    style={DATE_INPUT_STYLE}
+                  />
+                </td>
+
+                {/* 品牌 select — 全英文 */}
                 <td className="px-3 py-2">
                   <div className="relative">
                     <select
                       value={r.brand}
                       onChange={e => onUpdate(r.id, { brand: e.target.value })}
-                      style={{ ...INPUT_STYLE, paddingRight: '24px', appearance: 'none', minWidth: '80px' }}
+                      style={{ ...INPUT_STYLE, paddingRight: '24px', appearance: 'none', minWidth: '88px' }}
                     >
-                      {LUXURY_BRANDS.map(b => (
+                      {BRAND_OPTIONS.map(b => (
                         <option key={b} value={b}>{b}</option>
                       ))}
                     </select>
                     <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'oklch(0.55 0.02 60)' }} />
                   </div>
-                </td>
-
-                {/* 材質 — 可編輯 */}
-                <td className="px-3 py-2">
-                  <input
-                    type="text"
-                    value={r.material ?? ''}
-                    onChange={e => onUpdate(r.id, { material: e.target.value || undefined })}
-                    style={{ ...INPUT_STYLE, width: '80px' }}
-                    placeholder="材質"
-                  />
                 </td>
 
                 {/* 型號 */}
@@ -118,6 +145,17 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                     onChange={e => onUpdate(r.id, { model: e.target.value })}
                     style={{ ...INPUT_STYLE, width: '112px' }}
                     placeholder="型號"
+                  />
+                </td>
+
+                {/* 商品名稱 — 可直接編輯（Abby 手改） */}
+                <td className="px-3 py-2">
+                  <input
+                    type="text"
+                    value={r.productName ?? r.formattedName}
+                    onChange={e => onUpdate(r.id, { productName: e.target.value })}
+                    style={{ ...INPUT_STYLE, width: '280px' }}
+                    placeholder="商品名稱"
                   />
                 </td>
 
@@ -151,34 +189,12 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   />
                 </td>
 
-                {/* 價格 */}
+                {/* 價格 NT$ — Abby 手 key */}
                 <td className="px-3 py-2">
                   <PriceCell
                     value={r.price}
                     onChange={price => onUpdate(r.id, { price })}
                   />
-                </td>
-
-                {/* 到貨日期 — 每筆獨立 */}
-                <td className="px-3 py-2">
-                  <input
-                    type="date"
-                    value={r.arrivalDate ?? ''}
-                    onChange={e => onUpdate(r.id, { arrivalDate: e.target.value || undefined })}
-                    style={DATE_INPUT_STYLE}
-                  />
-                </td>
-
-                {/* 商品名稱（唯讀） */}
-                <td className="px-3 py-2">
-                  <p className="text-xs whitespace-nowrap font-medium min-w-[180px]" style={{ color: 'oklch(0.92 0.01 80)' }}>
-                    {r.formattedName}
-                  </p>
-                </td>
-
-                {/* 信心度 */}
-                <td className="px-3 py-2">
-                  <ConfidenceBadge confidence={r.confidence} />
                 </td>
               </tr>
             )
@@ -214,21 +230,7 @@ function PriceCell({ value, onChange }: { value: number | null; onChange: (v: nu
   )
 }
 
-function ConfidenceBadge({ confidence }: { confidence: number }) {
-  const pct = Math.round(confidence * 100)
-  const low = confidence < 0.7
-
-  return (
-    <div className={`flex items-center gap-1 ${low ? 'text-orange-400' : ''}`} style={low ? {} : { color: 'oklch(0.55 0.02 60)' }}>
-      {low && <AlertTriangle size={12} />}
-      <span className={`text-xs font-medium ${low ? 'text-orange-400' : ''}`}>
-        {pct}%
-      </span>
-    </div>
-  )
-}
-
-/** 縮圖：140px 預覽，點擊開全尺寸 modal */
+/** 縮圖：160×200px 預覽，點擊開全尺寸 modal */
 function ThumbnailCell({ src, alt }: { src: string; alt: string }) {
   const [open, setOpen] = useState(false)
 
