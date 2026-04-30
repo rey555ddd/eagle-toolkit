@@ -37,7 +37,7 @@ export function FeatureTagEditor({ value, onChange }: FeatureTagEditorProps) {
       {value.map(tag => (
         <span
           key={tag}
-          className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded"
+          className="flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded"
           style={{ background: 'oklch(0.72 0.08 75 / 15%)', border: '1px solid oklch(0.72 0.08 75 / 30%)', color: 'oklch(0.72 0.08 75)' }}
         >
           {tag}

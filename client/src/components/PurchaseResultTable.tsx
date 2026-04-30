@@ -51,7 +51,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
       <table className="min-w-full text-sm">
         <thead>
           <tr style={{ borderBottom: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
-            {['縮圖', '品牌', '材質', '型號', '顏色', '尺寸', '序號', '特徵', '價格 NT$', '到貨日期', '商品名稱', '信心'].map(h => (
+            {['縮圖', '品牌', '材質', '型號', '顏色', '尺寸', '特徵', '價格 NT$', '到貨日期', '商品名稱', '信心'].map(h => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={{ color: 'oklch(0.55 0.02 60)' }}>
                 {h}
               </th>
@@ -72,12 +72,12 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   borderLeft: lowConf ? '2px solid rgba(249,115,22,0.6)' : undefined,
                 }}
               >
-                {/* 縮圖 — 140px，可點開大圖 */}
+                {/* 縮圖 — 160×200px object-contain，可點開大圖 */}
                 <td className="px-3 py-2">
                   {df ? (
                     <ThumbnailCell src={df.previewUrl} alt={`img ${r.imageIndex + 1}`} />
                   ) : (
-                    <div className="w-[140px] h-[140px] rounded-lg flex items-center justify-center" style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
+                    <div className="w-[160px] h-[200px] rounded-lg flex items-center justify-center" style={{ background: 'oklch(0.12 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
                       <span className="text-xs" style={{ color: 'oklch(0.55 0.02 60)' }}>{r.imageIndex + 1}</span>
                     </div>
                   )}
@@ -143,19 +143,8 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   />
                 </td>
 
-                {/* 序號 */}
-                <td className="px-3 py-2">
-                  <input
-                    type="text"
-                    value={r.serial ?? ''}
-                    onChange={e => onUpdate(r.id, { serial: e.target.value || null })}
-                    style={{ ...INPUT_STYLE, width: '96px' }}
-                    placeholder="序號"
-                  />
-                </td>
-
                 {/* 特徵 tag */}
-                <td className="px-3 py-2 max-w-[160px]">
+                <td className="px-3 py-2 w-[200px]">
                   <FeatureTagEditor
                     value={r.features}
                     onChange={features => onUpdate(r.id, { features })}
@@ -249,13 +238,13 @@ function ThumbnailCell({ src, alt }: { src: string; alt: string }) {
         type="button"
         onClick={() => setOpen(true)}
         className="block rounded-lg overflow-hidden transition-opacity hover:opacity-80 focus:outline-none"
-        style={{ border: '1px solid oklch(0.25 0.01 65 / 50%)' }}
+        style={{ border: '1px solid oklch(0.25 0.01 65 / 50%)', background: 'oklch(0.12 0.005 60)' }}
         title="點擊放大"
       >
         <img
           src={src}
           alt={alt}
-          className="w-[140px] h-[140px] object-cover block"
+          className="w-[160px] h-[200px] object-contain block"
         />
       </button>
 
