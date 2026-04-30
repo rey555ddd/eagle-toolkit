@@ -1858,11 +1858,19 @@ const eagleRadarRouter = router({
         };
       }
 
-      const keywords = input?.keywords?.length
-        ? input.keywords
-        : [...EAGLE_RADAR_DEFAULT_KEYWORDS];
+      // CF Pages Functions 30 秒 timeout：單次 scanNow 最多 1 個 keyword（Apify 同步模式 30 筆約需 15-25 秒）
+      // 不指定 → 用 KV scan:nextKwIdx 輪流跑預設清單第 N 個（cron 每 2hr 跑一次、8 keyword 16hr 全跑完一輪）
+      let keywords: string[];
+      if (input?.keywords?.length) {
+        keywords = input.keywords.slice(0, 1);
+      } else {
+        const idxRaw = await kv.get('scan:nextKwIdx');
+        const idx = Number.parseInt(idxRaw || '0', 10) % EAGLE_RADAR_DEFAULT_KEYWORDS.length;
+        keywords = [EAGLE_RADAR_DEFAULT_KEYWORDS[idx]];
+        await kv.put('scan:nextKwIdx', String((idx + 1) % EAGLE_RADAR_DEFAULT_KEYWORDS.length));
+      }
 
-      console.log(`[EagleRadar] 開始掃描 ${keywords.length} 組關鍵字`);
+      console.log(`[EagleRadar] 開始掃描 ${keywords.length} 組關鍵字: ${keywords.join(', ')}`);
 
       let totalScanned = 0;
       let newCount = 0;
