@@ -182,12 +182,31 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleSave = () => {
     if (results.length === 0) { toast.error('沒有辨識結果可儲存'); return }
+
+    // CSV 跳脫：含 , " \n \r 的值用 " 包起來，內部 " 跳脫成 ""
+    function csvEscape(v: string | number | null | undefined): string {
+      if (v === null || v === undefined) return ''
+      const s = String(v)
+      if (/[",\n\r]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+
     // CSV 欄位順序（2026-04-30 主公拍板）：編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)
     const header = '編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)\n'
     const rows = results.map((r, idx) =>
-      [idx + 1, r.arrivalDate ?? '', r.brand, r.model,
-       r.productName ?? r.formattedName, r.color, r.size ?? '',
-       r.features.join('/'), r.price ?? ''].join(',')
+      [
+        csvEscape(idx + 1),
+        csvEscape(r.arrivalDate ?? ''),
+        csvEscape(r.brand),
+        csvEscape(r.model),
+        csvEscape(r.productName ?? r.formattedName),
+        csvEscape(r.color),
+        csvEscape(r.size ?? ''),
+        csvEscape(r.features.join('/')),
+        csvEscape(r.price ?? ''),
+      ].join(',')
     ).join('\n')
     const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)

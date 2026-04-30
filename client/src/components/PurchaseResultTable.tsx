@@ -8,7 +8,7 @@
  * - confidence < 0.7 → 整列橘色邊框警示
  */
 import { useState, useEffect } from 'react'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown, X, ImageOff } from 'lucide-react'
 import type { EditableResult } from '@/hooks/useRecognize'
 import type { DropFile } from '@/hooks/useDropzone'
 import { FeatureTagEditor } from './FeatureTagEditor'
@@ -98,8 +98,9 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   {df ? (
                     <ThumbnailCell src={df.previewUrl} alt={`img ${r.imageIndex + 1}`} />
                   ) : (
-                    <div className="w-[160px] h-[200px] rounded-lg flex items-center justify-center" style={{ background: 'oklch(0.12 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
-                      <span className="text-xs" style={{ color: 'oklch(0.55 0.02 60)' }}>{r.imageIndex + 1}</span>
+                    <div className="w-[160px] h-[200px] rounded-lg flex flex-col items-center justify-center gap-2" style={{ background: 'oklch(0.12 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
+                      <ImageOff size={32} style={{ color: 'oklch(0.40 0.01 60)' }} />
+                      <span className="text-xs" style={{ color: 'oklch(0.45 0.02 60)' }}>#{r.imageIndex + 1}</span>
                     </div>
                   )}
                 </td>

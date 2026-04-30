@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Radar as RadarIcon, Lock, RefreshCw, ExternalLink, Copy, Check, X, Sparkles, LogOut, Activity } from "lucide-react";
+import { Radar as RadarIcon, Lock, RefreshCw, ExternalLink, Copy, Check, X, Sparkles, LogOut, Activity, Flame } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 const LS_KEY_TOKEN = "eagle-radar-token";
@@ -175,7 +175,7 @@ function RadarDashboard({ token, operatorName, onLogout }: { token: string; oper
             value={strengthFilter}
             onChange={(v) => setStrengthFilter(v as StrengthFilter)}
             options={[
-              { id: "strong", label: "🔥 強（品牌+賣意）" },
+              { id: "strong", label: <><Flame size={12} className="text-orange-500" />強（品牌+賣意）</> },
               { id: "weak", label: "弱（品牌或賣意）" },
               { id: "all", label: "全部" },
             ]}
@@ -218,7 +218,7 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function FilterGroup<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: { id: T; label: string }[] }) {
+function FilterGroup<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: { id: T; label: React.ReactNode }[] }) {
   return (
     <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
       <span className="px-2 text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>{label}</span>
@@ -226,7 +226,7 @@ function FilterGroup<T extends string>({ label, value, onChange, options }: { la
         <button
           key={o.id}
           onClick={() => onChange(o.id)}
-          className="px-3 py-1 rounded-md text-xs transition-all"
+          className="px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1"
           style={{
             background: value === o.id ? "rgba(240,192,64,0.18)" : "transparent",
             color: value === o.id ? "#f0c040" : "rgba(255,255,255,0.55)",
@@ -301,7 +301,7 @@ function RadarCard({ post, onMarkHandled, onSkip, onGenerateReply }: {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: `${color}25`, color }}>{sourceLabels[post.source] ?? post.source}</span>
-          {post.priority >= 80 && <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5" }}>🔥 高優先</span>}
+          {post.priority >= 80 && <span className="text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5" }}><Flame size={10} />高優先</span>}
           {post.brandTags.slice(0, 3).map((b) => (
             <span key={b} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(240,192,64,0.15)", color: "#f0c040" }}>{b}</span>
           ))}
@@ -335,7 +335,7 @@ function RadarCard({ post, onMarkHandled, onSkip, onGenerateReply }: {
       ) : (
         <button onClick={handleGenReply} disabled={replyLoading} className="flex items-center justify-center gap-2 py-2 rounded-lg text-xs" style={{ background: "rgba(240,192,64,0.12)", border: "1px solid rgba(240,192,64,0.3)", color: "#f0c040" }}>
           {replyLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
-          {replyLoading ? "生成中..." : "✨ AI 生成個人化留言話術"}
+          {replyLoading ? "生成中..." : "AI 生成個人化留言話術"}
         </button>
       )}
 
