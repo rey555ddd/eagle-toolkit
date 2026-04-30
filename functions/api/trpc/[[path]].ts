@@ -699,6 +699,20 @@ interface Context {
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
+  // 🔒 資安：production 不洩漏 stack trace（避免內部路徑/行號被攻擊者拿來找零日漏洞）
+  // 2026-04-30 審查發現
+  errorFormatter({ shape, error }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        // 砍掉 stack（CF Worker 內部路徑、行號）
+        stack: undefined,
+      },
+      // Zod 錯誤訊息保留、但不附 stack
+      message: shape.message,
+    };
+  },
 });
 
 const router = t.router;
