@@ -2,11 +2,13 @@
  * 採購辨識結果表格 — eagle-toolkit 版
  * - 每欄可直接編輯
  * - confidence < 0.7 → 整列橘色邊框警示
- * - 縮圖從 dropFiles 取 previewUrl
+ * - 縮圖從 dropFiles 取 previewUrl（140px，點擊全尺寸 modal）
  * - 包含價格欄（Abby 手 key）
+ * - 材質欄（韓信後端 material 欄，可編輯）
+ * - 每筆獨立到貨日期（前端 state）
  */
 import { useState, useEffect } from 'react'
-import { AlertTriangle, ChevronDown } from 'lucide-react'
+import { AlertTriangle, ChevronDown, X } from 'lucide-react'
 import type { EditableResult } from '@/hooks/useRecognize'
 import type { DropFile } from '@/hooks/useDropzone'
 import { FeatureTagEditor } from './FeatureTagEditor'
@@ -17,6 +19,18 @@ interface PurchaseResultTableProps {
   results: EditableResult[]
   dropFiles: DropFile[]
   onUpdate: (id: string, patch: Partial<EditableResult>) => void
+}
+
+const DATE_INPUT_STYLE: React.CSSProperties = {
+  background: 'oklch(0.18 0.005 60)',
+  border: '1px solid oklch(0.25 0.01 65 / 50%)',
+  color: 'oklch(0.92 0.01 80)',
+  borderRadius: '0.375rem',
+  padding: '4px 8px',
+  fontSize: '0.75rem',
+  outline: 'none',
+  colorScheme: 'dark',
+  width: '130px',
 }
 
 const INPUT_STYLE: React.CSSProperties = {
@@ -37,7 +51,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
       <table className="min-w-full text-sm">
         <thead>
           <tr style={{ borderBottom: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
-            {['縮圖', '品牌', '型號', '顏色', '尺寸', '序號', '特徵', '價格 NT$', '商品名稱', '信心'].map(h => (
+            {['縮圖', '品牌', '材質', '型號', '顏色', '尺寸', '序號', '特徵', '價格 NT$', '到貨日期', '商品名稱', '信心'].map(h => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={{ color: 'oklch(0.55 0.02 60)' }}>
                 {h}
               </th>
@@ -58,17 +72,12 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   borderLeft: lowConf ? '2px solid rgba(249,115,22,0.6)' : undefined,
                 }}
               >
-                {/* 縮圖 */}
+                {/* 縮圖 — 140px，可點開大圖 */}
                 <td className="px-3 py-2">
                   {df ? (
-                    <img
-                      src={df.previewUrl}
-                      alt={`img ${r.imageIndex + 1}`}
-                      className="w-12 h-12 object-cover rounded-lg"
-                      style={{ border: '1px solid oklch(0.25 0.01 65 / 50%)' }}
-                    />
+                    <ThumbnailCell src={df.previewUrl} alt={`img ${r.imageIndex + 1}`} />
                   ) : (
-                    <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
+                    <div className="w-[140px] h-[140px] rounded-lg flex items-center justify-center" style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)' }}>
                       <span className="text-xs" style={{ color: 'oklch(0.55 0.02 60)' }}>{r.imageIndex + 1}</span>
                     </div>
                   )}
@@ -88,6 +97,17 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                     </select>
                     <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'oklch(0.55 0.02 60)' }} />
                   </div>
+                </td>
+
+                {/* 材質 — 可編輯 */}
+                <td className="px-3 py-2">
+                  <input
+                    type="text"
+                    value={r.material ?? ''}
+                    onChange={e => onUpdate(r.id, { material: e.target.value || undefined })}
+                    style={{ ...INPUT_STYLE, width: '80px' }}
+                    placeholder="材質"
+                  />
                 </td>
 
                 {/* 型號 */}
@@ -150,6 +170,16 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   />
                 </td>
 
+                {/* 到貨日期 — 每筆獨立 */}
+                <td className="px-3 py-2">
+                  <input
+                    type="date"
+                    value={r.arrivalDate ?? ''}
+                    onChange={e => onUpdate(r.id, { arrivalDate: e.target.value || undefined })}
+                    style={DATE_INPUT_STYLE}
+                  />
+                </td>
+
                 {/* 商品名稱（唯讀） */}
                 <td className="px-3 py-2">
                   <p className="text-xs whitespace-nowrap font-medium min-w-[180px]" style={{ color: 'oklch(0.92 0.01 80)' }}>
@@ -206,5 +236,56 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
         {pct}%
       </span>
     </div>
+  )
+}
+
+/** 縮圖：140px 預覽，點擊開全尺寸 modal */
+function ThumbnailCell({ src, alt }: { src: string; alt: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block rounded-lg overflow-hidden transition-opacity hover:opacity-80 focus:outline-none"
+        style={{ border: '1px solid oklch(0.25 0.01 65 / 50%)' }}
+        title="點擊放大"
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="w-[140px] h-[140px] object-cover block"
+        />
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: 'oklch(0.05 0.005 60 / 85%)' }}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="relative max-w-2xl w-full rounded-2xl overflow-hidden"
+            style={{ background: 'oklch(0.14 0.005 60)', border: '1px solid oklch(0.72 0.08 75 / 25%)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute top-3 right-3 z-10 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+              style={{ background: 'oklch(0.2 0.005 60)', color: 'oklch(0.7 0.02 70)' }}
+            >
+              <X size={16} />
+            </button>
+            <img
+              src={src}
+              alt={alt}
+              className="w-full max-h-[80vh] object-contain block"
+            />
+          </div>
+        </div>
+      )}
+    </>
   )
 }

@@ -10,6 +10,7 @@ export interface RecognizeResult {
   imageIndex: number
   brand: string
   model: string
+  material?: string
   color: string
   size: string | null
   serial: string | null
@@ -22,7 +23,8 @@ export interface RecognizeResult {
 }
 
 export interface EditableResult extends RecognizeResult {
-  id: string  // 對應 DropFile.id
+  id: string            // 對應 DropFile.id
+  arrivalDate?: string  // 每筆獨立到貨日期（前端 state，不送後端）
 }
 
 function readFileAsDataURL(file: File): Promise<string> {
