@@ -1,8 +1,9 @@
 /**
  * 採購辨識結果表格 — eagle-toolkit 版
  * 欄位順序（2026-04-30 主公拍板）：
- *   編號 / 縮圖 / 到貨日期 / 品牌 / 型號 / 商品名稱(可編輯) / 顏色 / 尺寸 / 特徵 / 價格 NT$
- * - 材質欄已移除（AI 仍辨識、包在商品名稱字串裡）
+ *   編號 / 縮圖 / 到貨日期 / 品牌 / 型號 / 商品名稱(可編輯) / 顏色 / 價格 NT$ / 數量
+ * - 尺寸欄已移除（AI 仍辨識、包在商品名稱字串裡）
+ * - 特徵欄已移除（AI 仍辨識、包在商品名稱字串裡）
  * - 品牌 dropdown 全英文
  * - 商品名稱直接可編輯（Abby 可改）
  * - confidence < 0.7 → 整列橘色邊框警示
@@ -11,7 +12,6 @@ import { useState, useEffect } from 'react'
 import { ChevronDown, X, ImageOff } from 'lucide-react'
 import type { EditableResult } from '@/hooks/useRecognize'
 import type { DropFile } from '@/hooks/useDropzone'
-import { FeatureTagEditor } from './FeatureTagEditor'
 
 const BRAND_OPTIONS = [
   'CHANEL',
@@ -62,7 +62,7 @@ const INPUT_STYLE: React.CSSProperties = {
   outline: 'none',
 }
 
-const HEADERS = ['編號', '縮圖', '到貨日期', '品牌', '型號', '商品名稱', '顏色', '尺寸', '特徵', '價格 NT$']
+const HEADERS = ['編號', '縮圖', '到貨日期', '品牌', '型號', '商品名稱', '顏色', '價格 NT$', '數量']
 
 /** 去掉 formattedName 帶的 "1." 前綴，讓商品名稱欄不顯示編號 */
 function stripSeqPrefix(name: string): string {
@@ -176,30 +176,22 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   />
                 </td>
 
-                {/* 尺寸 */}
-                <td className="px-3 py-2">
-                  <input
-                    type="text"
-                    value={r.size ?? ''}
-                    onChange={e => onUpdate(r.id, { size: e.target.value || null })}
-                    style={{ ...INPUT_STYLE, width: '80px' }}
-                    placeholder="尺寸"
-                  />
-                </td>
-
-                {/* 特徵 tag */}
-                <td className="px-3 py-2 w-[200px] align-top">
-                  <FeatureTagEditor
-                    value={r.features}
-                    onChange={features => onUpdate(r.id, { features })}
-                  />
-                </td>
-
                 {/* 價格 NT$ — Abby 手 key */}
                 <td className="px-3 py-2">
                   <PriceCell
                     value={r.price}
                     onChange={price => onUpdate(r.id, { price })}
+                  />
+                </td>
+
+                {/* 數量 — 預設 1 */}
+                <td className="px-3 py-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={r.quantity ?? 1}
+                    onChange={e => onUpdate(r.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                    style={{ ...INPUT_STYLE, width: '60px' }}
                   />
                 </td>
               </tr>

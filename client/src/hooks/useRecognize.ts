@@ -26,6 +26,7 @@ export interface EditableResult extends RecognizeResult {
   id: string             // 對應 DropFile.id
   arrivalDate?: string   // 每筆獨立到貨日期（前端 state，不送後端）
   productName?: string   // 可覆寫的商品名稱（Abby 手動修改，預設等於 formattedName）
+  quantity?: number      // 數量（預設 1）
 }
 
 function readFileAsDataURL(file: File): Promise<string> {

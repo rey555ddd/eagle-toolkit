@@ -205,8 +205,8 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
       return s
     }
 
-    // CSV 欄位順序（2026-04-30 主公拍板）：編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)
-    const header = '編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)\n'
+    // CSV 欄位順序（2026-04-30 主公拍板）：編號,到貨日期,品牌,型號,商品名稱,顏色,價格(NT$),數量
+    const header = '編號,到貨日期,品牌,型號,商品名稱,顏色,價格(NT$),數量\n'
     const rows = sortedResults.map((r, idx) =>
       [
         csvEscape(idx + 1),
@@ -216,9 +216,8 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
         // 商品名稱去掉 formattedName 帶的 "1." 前綴
         csvEscape((r.productName ?? r.formattedName).replace(/^\d+\./, '')),
         csvEscape(r.color),
-        csvEscape(r.size ?? ''),
-        csvEscape(r.features.join('/')),
         csvEscape(r.price ?? ''),
+        csvEscape(r.quantity ?? 1),
       ].join(',')
     ).join('\n')
     const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8' })
