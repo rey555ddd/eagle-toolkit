@@ -33,11 +33,11 @@ export function FeatureTagEditor({ value, onChange }: FeatureTagEditorProps) {
   }
 
   return (
-    <div className="flex flex-wrap gap-1 items-center min-h-[30px]">
+    <div className="flex flex-wrap gap-1 items-center content-start max-h-[68px] overflow-y-auto">
       {value.map(tag => (
         <span
           key={tag}
-          className="flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded"
+          className="inline-flex items-center gap-0.5 text-[10px] leading-tight px-1.5 py-0.5 rounded whitespace-nowrap"
           style={{ background: 'oklch(0.72 0.08 75 / 15%)', border: '1px solid oklch(0.72 0.08 75 / 30%)', color: 'oklch(0.72 0.08 75)' }}
         >
           {tag}

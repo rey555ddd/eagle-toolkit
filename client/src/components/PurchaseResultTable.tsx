@@ -183,7 +183,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                 </td>
 
                 {/* 特徵 tag */}
-                <td className="px-3 py-2 w-[200px]">
+                <td className="px-3 py-2 w-[260px] align-top">
                   <FeatureTagEditor
                     value={r.features}
                     onChange={features => onUpdate(r.id, { features })}
