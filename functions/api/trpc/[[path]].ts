@@ -1778,8 +1778,8 @@ async function fetchEagleRadarThreadsKeyword(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      keyword,
-      maxResults: EAGLE_RADAR_MAX_RESULTS_PER_KW,
+      keywords: [keyword],
+      maxResults: String(EAGLE_RADAR_MAX_RESULTS_PER_KW),
     }),
   });
 
