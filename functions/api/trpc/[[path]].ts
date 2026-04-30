@@ -1485,41 +1485,78 @@ const PURCHASE_SYSTEM_PROMPT = `
 | 寶格麗 | **BVLGARI** |
 | 其他 | **OTHER** |
 
-## productName 命名順序（**主公規則 2026-04-30**）
+## productName 命名邏輯（**主公規則 2026-05-01：對齊蹦闆 Excel 真實寫法**）
 
-順序固定：**品牌 → 材質 → 大小 → 型號 → 顏色 → 序號 → 特色串**
-品牌**一律全英文**。
+主公明示：「**它都會寫什麼包什麼包、然後斜線、接著是顏色、編號**」——
+材質 / 紋路（老花 / 棋盤格 / 堤花 / 小羊皮 等）**融進型號描述裡**、不要單獨拉出來當第二段。
 
-範例：
-| 商品 | productName |
+### Sheets 真實 4 種 pattern
+
+| pattern | 範例 |
 |---|---|
-| CHANEL 19BAG 黑 小羊皮 | \`CHANEL 小羊皮 小款 19BAG/黑 雙C金扣 混色鏈條\` |
-| LV PASSY 老花 咖色 | \`LV 老花 30公分 PASSY新款郵差包/咖 M45592\` |
-| HERMES BIRKIN 30 灰 Togo | \`HERMES Togo 30 BIRKIN/灰 X刻 2016年 金扣\` |
-| GUCCI 圓餅包 提花 | \`GUCCI 提花 圓餅包\`（GUCCI 沒大小就跳過） |
-| BV 對開短夾 編織 灰 | \`BV 編織 短款 對開短夾/灰\` |
-| DIOR BOOK TOTE 老花 中款 | \`DIOR 老花 中款 BOOK TOTE\` |
-| YSL NIKI 中款 黑 | \`YSL 牛皮 中款 NIKI/黑\` |
-| GOYARD 托特包 滿版 綠 | \`GOYARD 滿版花紋 托特包/綠\` |
-| BALENCIAGA 機車包 鱷魚紋 黑 | \`BALENCIAGA 鱷魚紋 S號 沙漏包/黑\` |
-| BVLGARI 蛇頭包 祖母綠 | \`BVLGARI 全皮革 — 蛇頭包/祖母綠\` |
+| 1. 純品牌+型號（無斜線） | \`GUCCI堤花圓餅包\` / \`DIOR老花馬鞍包\` |
+| 2. 品牌+型號 / 顏色 [序號] | \`DIOR 5格黛妃包/黑\` / \`LV老花拼色郵差包/咖 M44876\` |
+| 3. 品牌+型號+尺寸 / 顏色 / 特徵 | \`HERMES菜籃子22公分/金棕/B刻\` |
+| 4. 品牌+型號 / 顏色 尺寸 特徵 | \`CHANEL 19BAG/黑金 26公分 30開無卡\` / \`HERMES HERBAG 39/黑 框D/2000年\` |
 
-**型號不確定的情況**：
-| 商品 | productName |
-|---|---|
-| 看不出 LV 具體型號（沒序號、無標籤） | \`LV 老花 中款 /咖\`（型號留空、用 / 分隔顏色） |
-| CHANEL 能看到型號但不確定（無芯片無卡） | \`CHANEL 小羊皮 26公分 /黑金 30開\`（型號留空） |
+### 各品牌寫法慣例（從 Sheets 提煉）
 
-**productName 規則**：
-1. 不要加開頭編號（編號由後端拼）
-2. **品牌一律全英文**（譬如 CHANEL / HERMES / BALENCIAGA / BVLGARI、不寫中文）
-3. 各元素用**空格**分隔
-4. 顏色前用 \`/\` 分隔（譬如 \`/黑\`、\`/咖\`、\`/黑金\`）
-5. 序號跟其他特色直接用空格（譬如 \`M45592\` 後面接 \`金扣\`）
-6. **某元素沒有就跳過、不要佔位**（譬如 GUCCI 沒大小就直接寫 \`GUCCI 提花 圓餅包\`）
-7. **型號不確定**留空、留 / 接顏色
-8. 特色串放最後、用空格連寫
-9. 「看到什麼寫什麼」——簡潔不冗、不要硬塞「約」「大概」這種模糊詞
+**LV**（品牌+型號**直連無空格**、紋路緊接 LV 之後）：
+- \`LV老花PASSY新款郵差包/咖 M45592\`
+- \`LV棋盤格對開長夾/黑 N62227\`
+- \`LV老花ON THE GO/MM M45321\`（MM/PM/GM/BB 寫在型號後）
+- \`LV NIGO手提包 N40355\`（聯名款空格）
+
+**CHANEL**（品牌+空格+型號）：
+- \`CHANEL 19BAG/黑金 26公分 30開無卡\`
+- \`CHANEL BOY 25/黑銀 24開\`
+- \`CHANEL 金球 Classic Flap Mini 20/奶茶色金扣 芯片\`
+- \`CHANEL山型紋WOC/黑金 25開無卡\`（紋路直連）
+
+**HERMES**（品牌+空格+型號、保留中文型號名）：
+- \`HERMES HERBAG 39/黑 框D/2000年\`
+- \`HERMES菜籃子22公分/金棕/B刻\`
+- \`HERMES Birkin 30/灰 X刻2016年 金扣 Togo\`
+- \`HERMES Lindy 26/錫器灰 Z刻 2021年 Clemence\`
+
+**DIOR**（品牌+空格+型號）：
+- \`DIOR 5格黛妃包/黑\`
+- \`DIOR 老花 BOOK TOTE/中款\`
+- \`DIOR老花馬鞍包\`（也有直連寫法、看 AI 判斷）
+
+**GUCCI / BV / GOYARD**（品牌+型號**直連**）：
+- \`GUCCI堤花圓餅包\`
+- \`GUCCI緹花後背包\`
+- \`BV編織對開短夾/灰\`
+- \`GOYARD滿版托特包/綠\`
+
+**YSL**（品牌+空格）：\`YSL NIKI /中款/黑\`
+
+**其他**（PRADA / CELINE / LOEWE / FENDI / BURBERRY / BALENCIAGA / BVLGARI）品牌全英文、空格規則看具體商品：
+- \`PRADA Re-Nylon Backpack 尼龍後背包/深藍\`
+- \`CELINE鞦韆包\`
+- \`LOEWE PUZZLE 幾何包/沙色\`
+- \`FENDI滿版托特包/黑\`
+- \`BURBERRY 尼龍後背包中款/紅\`
+- \`BALENCIAGA NANO CITY機車包\`
+- \`BVLGARI蛇頭包/祖母綠\`
+
+### productName 規則
+
+1. **不加開頭編號**（編號由後端拼進 formattedName）
+2. **品牌全英文**（CHANEL / LV / HERMES / DIOR / GUCCI / YSL / BV / GOYARD / BALENCIAGA / LOEWE / FENDI / PRADA / CELINE / BURBERRY / CHLOE / MIUMIU / BVLGARI / OTHER、不寫中文）
+3. **材質 / 紋路融進型號描述**——不要單獨「品牌 材質 大小 型號」這種固定順序
+   - LV：紋路（老花 / 棋盤格 / 壓紋 / 水波紋）緊接 LV、再接型號名（直連無空格）
+   - CHANEL：紋路（小羊皮 / 荔枝皮）通常**省略不寫**或寫在 features
+   - GUCCI：紋路（堤花 / 緹花）緊接 GUCCI 後再接型號
+4. **斜線 \`/\` 用法**：
+   - 第一個 \`/\` 之後是**顏色**（單色或主+輔色、譬如 \`/黑\`、\`/咖\`、\`/黑金\`）
+   - 顏色之後若有更多資訊用**空格**接（譬如 \`/黑 框D\`、\`/咖 M45592\`、\`/黑金 26公分 30開無卡\`）
+   - 多段特徵之間用 \`/\` 分隔（譬如 \`/金棕/B刻\`、\`/黑 框D/2000年\`）
+5. **LV 序號永遠在最後**（M45592 / N62227 等、緊接顏色或空格分隔）
+6. **看到什麼寫什麼**——簡潔對齊蹦闆風格、不要硬塞「約」「大概」「左右」
+7. **某元素沒有就跳過**（譬如 \`GUCCI堤花圓餅包\` 沒顏色就不寫斜線）
+8. **型號不確定**就留空型號描述、譬如 \`LV老花/咖 M45592\`（紋路+顏色+序號）
 
 ## 嚴格規則
 
@@ -1536,17 +1573,18 @@ const PURCHASE_SYSTEM_PROMPT = `
 interface PurchaseRecognizeResult {
   imageIndex: number;
   brand: string;
-  material: string;          // 主公 2026-04-30 加：材質（譬如 '老花' / '小羊皮' / 'Togo' / '編織' / '尼龍'）
+  material: string;          // 主公 2026-04-30 加：材質（譬如 '老花' / '小羊皮' / 'Togo'）
   model: string;             // 型號（不確定就空字串、主公規則：沒有也沒關係）
   color: string;
   size: string | null;
   serial: string | null;
   features: string[];
   confidence: number;
-  productName: string;       // AI 直接生成（不含開頭編號）、命名順序：品牌 → 材質 → 大小 → 型號 → 顏色 → 序號 → 特色
+  productName: string;       // AI 直接生成（不含開頭編號）、對齊蹦闆 Excel 真實命名 pattern
   formattedName: string;     // 含編號的完整字串（{seq}.{productName}）
   costLog: string;
   price: number | null;
+  quantity: number;          // 主公 2026-05-01 加：數量（對齊 Sheets D 欄、預設 1、Abby 手改）
   error?: string;
 }
 
@@ -1706,6 +1744,7 @@ async function recognizeOnePurchaseImage(
         formattedName: `${imageIndex + 1}.辨識失敗`,
         costLog,
         price: null,
+        quantity: 1,
         error: `Claude API 錯誤 (${response.status})`,
       };
     }
@@ -1743,7 +1782,7 @@ async function recognizeOnePurchaseImage(
     );
 
     console.log(costLog);
-    return { imageIndex, brand, material, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null };
+    return { imageIndex, brand, material, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null, quantity: 1 };
 
   } catch (err) {
     console.error(`[Purchase] 解析錯誤 image[${imageIndex}]:`, err, 'rawJson:', rawJson.slice(0, 300));
@@ -1761,6 +1800,7 @@ async function recognizeOnePurchaseImage(
       formattedName: `${imageIndex + 1}.解析錯誤`,
       costLog,
       price: null,
+        quantity: 1,
       error: String(err),
     };
   }
