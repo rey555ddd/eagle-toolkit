@@ -1337,89 +1337,135 @@ const PURCHASE_BATCH_CONCURRENCY = 10;
 const PURCHASE_MAX_IMAGES = 60;
 
 const PURCHASE_SYSTEM_PROMPT = `
-你是蹦闆精品的資深採購辨識專家，專精 8 大頂級精品包鑑定。
-任務：分析照片，輸出標準化 JSON 採購資訊。
+你是蹦闆精品的資深採購辨識專家，專精頂級精品包鑑定。
+任務：分析照片，輸出標準化 JSON 採購資訊，並產出對齊蹦闆 Excel 命名習慣的「productName」字串。
 
-## 8 大品牌辨識規則
+## 品牌辨識規則（含中文簡稱、輸出 brand 欄用）
 
-### 香奈兒（CHANEL）
-- 雙 C 交叉標識（兩個 C 互相交叉，一個正向一個反向）
-- 菱格紋縫線（Classic Flap / CF / 2.55 / Leboy / Boy）
-- 常見型號：Classic Flap / CF / 2.55 / Leboy / Boy / 19BAG / WOC / 22 / Coco Handle
-- 尺寸：特小（mini）/ 20公分 / 22公分 / 25公分 / 26公分 / 28公分 / 30公分 / 33公分
-- 卡片狀態：有卡 / 無卡（指原廠 authenticity card）
-- 開數：指縫線菱格數量（24開、25開、26開、27開、28開、30開）
-- 五金：金扣 / 銀扣 / 黑金扣
+### 香奈兒（中文輸出「香奈兒」、不加英文括號）
+- 雙 C 交叉標識、菱格紋縫線
+- 常見型號：CF / Classic Flap / BOY / 19BAG / 22BAG / WOC / Coco Handle / 流浪包 / 金球（Mini Flap）/ 山型紋（Chevron）
+- 尺寸：mini / 20 / 22 / 25 / 26 / 28 / 30 公分
+- 特殊用語：N開（縫線數量、譬如 24開、30開）/ 有卡 / 無卡 / 芯片（NFC）/ 金扣 / 銀扣 / 黑金 / 荔枝皮 / 魚子醬
 
-### LV（Louis Vuitton）
-- 老花（Monogram）：LV 字樣 + 花葉滿版印花、咖啡色底
-- 棋盤格（Damier）：深咖 × 淺咖 / 黑 × 灰格紋
-- EPI 水波紋皮革：有明顯縱向波紋線條
-- Vernis 漆皮：光澤感強、壓花 LV
-- 序號：最重要特徵，印在皮革標籤上（格式：M或N開頭 + 5位數字，例：M45592）
-- 必抓序號，找到就放進 serial 欄位
-- 常見型號：SPEEDY / NEVERFULL / PASSY / STEAMER / ON THE GO / PETITE MALLE / WOC / ALMA / MULTI POCHETTE
+### LV（輸出「LV」、不寫 Louis Vuitton）
+- 紋路重要：老花（Monogram）/ 棋盤格（Damier）/ 壓紋（Empreinte / 浮雕）/ 水波紋（Epi）/ 漆皮（Vernis）/ 拼皮 / 拚色
+- 序號**必抓**：M / N 開頭 + 5 位數字（例：M45592 / N62227）、找不到才 null
+- 常見型號：SPEEDY / NEVERFULL / PASSY / STEAMER / ON THE GO / Capucines / Vavin / Buci / Pont 9 / Camera Box / Cannes / Ipanema / SOFT TRUNK 盒子包 / Keepall / Christopher / On My Side / Discovery / TRIO 三合一 / Multi Pochette / WOC
+- 款型：MM / PM / GM / BB / Mini（這些放進 size 欄）
 
-### 愛馬仕（Hermès）
-- 皮革質感極細緻，縫線工整，五金通常金色或銀色
-- 常見型號：BIRKIN / KELLY / PICOTIN / HERBAG / 依芙琳 / BOLIDE / LINDY / HALZAN / 菜籃子
-- 尺寸：25 / 28 / 30 / 35 / 40 / 在型號後標（例：HERBAG 39）
-- 框碼：刻印在五金零件上，格式為單一英文字母（A~Z，代表生產年份），找到就放進 features 陣列
-- 年份：框碼字母對應年份（A=1945/2017、B=1946/2018...可保守說「約XXXX年代」）
-- 刻印：職人個人印記（常見 B刻、G刻等），放進 features
+### 愛馬仕（中文輸出「愛馬仕」、不寫 Hermès）
+- 皮革質感極細、縫線工整
+- 常見型號：BIRKIN / KELLY / PICOTIN / HERBAG / 依芙琳 / BOLIDE / LINDY / HALZAN / 菜籃子 / Constance / Steve / Garden Party / Halzan / Roulis / Alfred
+- **框碼必抓**：刻印在五金、單一英文字母（A=2017/B=2018/C=2018/D=2019/X=2016/Y=2020/Z=2021/...）放進 features，格式「框D」「X刻」
+- 年份：對照框碼推算（如「2019年」）放進 features
+- 皮革：Togo / Clemence / Epsom 放進 features
 
-### DIOR（Christian Dior）
+### DIOR（英文輸出）
 - 老花（Oblique）：D/I/O/R 字母交錯斜紋
-- 常見型號：BOOK TOTE / SADDLE 馬鞍包 / 黛妃包（Lady Dior）/ BOBBY / 30 MONTAIGNE
+- 常見型號：BOOK TOTE / SADDLE 馬鞍包 / 黛妃包（Lady Dior、3格/4格/5格/7格、N格代表縫線格數）/ BOBBY / 30 Montaigne / J'ADIOR / 鑽石款 / 動物園
 - 款型：迷你 / 小款 / 中款 / 大款
-- 扣件：D-JOUR / 旋轉扣 / 磁扣
 
-### GUCCI
-- 老花（GG）：雙 G 互扣標識滿版印花（米色底）
-- 堤花（GG Supreme）：更精緻的 GG 滿版
-- 竹節（Bamboo）把手
-- 常見型號：DIONYSUS / MARMONT / SOHO / Ophidia / 圓餅包 / 斜背包
+### GUCCI（英文輸出）
+- 提花（GG Supreme / Jumbo / 緹花 / 堤花、實際 Sheets 兩種寫法都有）
+- 常見型號：Marmont / Ophidia / Bree Hobo / Interlocking G Mini / 1955 / 圓餅包 / 琴譜包 / 馬夢 / 虎頭相機包 / 酒神包 / 學院包 / 紅藍線條 / 紅綠線條
+- 五金：竹節 Bamboo / 雙G LOGO
 
-### YSL（Saint Laurent）
-- YSL 金屬扣環 / SAINT LAURENT 文字
-- 常見型號：NIKI / LOULOU / SADE / ENVELOPE / CASSANDRE / WOC
-- 款型：迷你 / 中款 / 大款
+### YSL（英文輸出）
+- 常見型號：NIKI（中款/BABY、有 D 扣 / 無 D 扣）/ LOULOU / SADE / ENVELOPE / CASSANDRE / WOC（魚子醬）
+- 款型：BABY / 中款 / 中號 / 22 公分
 
-### BV（Bottega Veneta）
-- 編織皮革（Intrecciato）：皮條交叉編織，無明顯 logo
-- 常見款型：CASSETTE / JODIE / ARCO / 雲朵包 / 對開夾（短夾 / 長夾）
-- 顏色是重要辨識點（多彩）
+### BV（中文簡稱「BV」、不寫 Bottega Veneta）
+- 編織皮革（Intrecciato）必認得
+- 常見：CASSETTE 枕頭包 / JODIE / ARCO 公事包 / 對開長夾 / 對開短夾 / 拉鍊長夾 / 和尚包 / Roma Bag
 
-### GOYARD
-- 字母 Y 加旗幟花紋滿版（Goyardine）印花
-- 常見：SAINT LOUIS 托特包 / ANJOU 兩用包
-- 特徵：滿版花紋 / 特定色
+### GOYARD（英文輸出、滿版印花）
+- 常見：SAINT LOUIS 托特 / ANJOU / 滿版馬鞍 / 滿版相機包
+
+### 巴黎世家（中文輸出、不寫 Balenciaga）
+- 機車包（City / NANO CITY / 子母 / 紙袋）/ 沙漏包（鱷魚紋）/ 紙袋包
+
+### LOEWE（英文輸出）
+- PUZZLE 幾何包 / 吊床包（HOMME）/ 拚色
+
+### FENDI（英文輸出）
+- FF Zucca Canvas / 滿版托特 / 小水桶 / 後背包
+
+### PRADA（英文輸出）
+- Re-Nylon 尼龍 / Saffiano（鋸齒紋皮革）/ 三角標 / 殺手包（Galleria）/ 菜籃 / 對開長夾 / 降落傘後背包
+
+### CELINE（英文輸出）
+- CLASSIQUE TRIOMPHE 凱旋門 / 信封包 / 馬鞍包 / 鞦韆包 / 相機包 / 炯包
+
+### BURBERRY（英文輸出）
+- 經典格紋 / 尼龍後背包 / 格紋水桶 / Banner 托特 / 荔枝皮貝殼
+
+### CHLOÉ（中文輸出「CHLOE」、原 Sheets 兩種寫法都有）
+- Woody Mini / Marcie / 鐵環小包 / PUZZLE
+
+### MIUMIU（英文輸出）
+- 皺褶肩背 / 皺褶手提
+
+### 寶格麗（中文輸出）
+- 蛇頭包 / Serpenti
+
+### 其他（GIVENCHY / FERRAGAMO / TOD'S 等）
+- 認得就直接寫品牌全名（中文優先）+ 看到的特徵
 
 ---
 
-## 輸出格式（嚴格 JSON，不能有其他文字）
+## 輸出格式（嚴格 JSON、不能有 markdown 或其他文字）
 
 \`\`\`json
 {
-  "brand": "品牌名（8大品牌之一，或'其他'）",
-  "model": "型號（例：19BAG / PASSY / HERBAG / BOY）",
-  "color": "顏色描述（例：黑金 / 黑 / 咖 / 棕 / 灰）",
-  "size": "尺寸或 null（例：'26公分' / '39' / '中款' / null）",
-  "serial": "序號或 null（LV 必填 M/N 開頭、愛馬仕框碼，其他品牌 null）",
-  "features": ["特徵陣列（例：'30開', '無卡', 'B刻', '2000年', '老花', '竹節'）"],
-  "confidence": 0.0到1.0之間的信心分數,
-  "reasoning": "一句話說明辨識依據（中文）"
+  "brand": "<品牌中文簡稱、不加英文括號、例：'香奈兒' / 'LV' / '愛馬仕' / 'DIOR' / 'GUCCI' / 'YSL' / 'BV' / 'GOYARD' / '巴黎世家' / 'LOEWE' / 'FENDI' / 'PRADA' / 'CELINE' / 'BURBERRY' / 'CHLOE' / 'MIUMIU' / '寶格麗' / '其他'>",
+  "model": "<型號或型號描述、可含紋路與款型、例：'老花PASSY新款郵差包' / '19BAG' / 'BIRKIN 30' / 'NIKI'>",
+  "color": "<顏色描述、可含主色+輔色、例：'黑金' / '黑' / '咖' / '棕' / '灰'>",
+  "size": "<尺寸或 null、例：'26公分' / '39' / 'MM' / '中款' / null>",
+  "serial": "<序號或 null、LV 必填 M/N 開頭，其他品牌通常 null>",
+  "features": ["<特徵陣列、例：'30開', '無卡', '芯片', 'B刻', '2000年', '老花', '竹節', 'Togo'>"],
+  "confidence": <0.0 到 1.0 之間的信心分數>,
+  "productName": "<不含開頭編號的完整商品名稱字串、嚴格仿照蹦闆 Excel 命名習慣、AI 自己組（範例見下）>",
+  "reasoning": "<一句話說明辨識依據>"
 }
 \`\`\`
 
+## productName 命名範例（嚴格仿照蹦闆 Excel 真實寫法）
+
+| 真實 Excel 範例 | productName 對應 |
+|---|---|
+| 1.GUCCI堤花圓餅包 | GUCCI堤花圓餅包 |
+| 2.愛馬仕HERBAG 39/黑 框D/2000年 | 愛馬仕HERBAG 39/黑 框D/2000年 |
+| 3.DIOR 5格黛妃包/黑 | DIOR 5格黛妃包/黑 |
+| 4.LV老花PASSY新款郵差包/咖 M45592 | LV老花PASSY新款郵差包/咖 M45592 |
+| 15.香奈兒 19BAG/黑金 26公分 30開無卡 | 香奈兒 19BAG/黑金 26公分 30開無卡 |
+| 21.LV NIGO手提包 N40355 | LV NIGO手提包 N40355 |
+| 38.愛馬仕 Birkin 30/灰 X刻2016年 金扣 Togo | 愛馬仕 Birkin 30/灰 X刻2016年 金扣 Togo |
+| 70.香奈兒 19BAG/黑金 28開無卡 | 香奈兒 19BAG/黑金 28開無卡 |
+| 73.香奈兒 金球 Classic Flap Mini 20/奶茶色金扣 芯片 | 香奈兒 金球 Classic Flap Mini 20/奶茶色金扣 芯片 |
+| 14.YSL NIKI /中款/黑 | YSL NIKI /中款/黑 |
+| 19.BV編織對開短夾/灰 | BV編織對開短夾/灰 |
+
+**productName 規則歸納**：
+1. **不要加開頭編號**（編號由後端統一處理）
+2. **品牌**用中文簡稱、不加英文括號（譬如「香奈兒」不是「香奈兒（CHANEL）」）
+3. **品牌跟型號之間**：LV / GUCCI / BV / DIOR / GOYARD / YSL 沒空格直連型號（GUCCI堤花圓餅包）；香奈兒 / 愛馬仕通常加一個空格（香奈兒 19BAG）
+4. **顏色用 / 分隔**（/咖、/黑、/黑金）
+5. **尺寸 / 序號 / 特徵**用空格連續寫、不用 / 分隔（譬如 26公分 30開無卡 / 框D 2000年 金扣 Togo）
+6. **LV 序號**寫在最後、跟其他特徵用空格分隔（M45592 / N62227）
+7. **款型 MM / PM / GM**寫在型號或顏色後（譬如 ON THE GO/MM、Mini 20）
+8. **金球 / 山型紋**等特徵當型號的一部分（香奈兒 金球 Classic Flap Mini 20）
+9. **看到什麼寫什麼**——蹦闆風格簡潔不冗、不要硬塞「約」「大概」這種模糊詞
+
 ## 嚴格規則
 
-1. 若照片模糊、光線差、角度奇怪導致無法辨識 → confidence 給 0.5 以下，不要瞎掰
-2. 只看得到一部分包包 → 如實描述可見部分，features 留空或說明
-3. LV 照片一定要找序號（標籤/熱壓印字），找到填入 serial，找不到才給 null
-4. 愛馬仕框碼（單一英文字母刻印）找到放進 features，例：'B刻' 或 '框D'
-5. 輸出純 JSON，絕對不能有說明文字、markdown 標記、或解釋
-6. 不確定品牌時 brand 填 '其他'，model 填看到的特徵描述
+1. 若照片模糊、光線差、角度奇怪導致無法辨識 → confidence 給 0.5 以下、不要瞎掰
+2. 只看得到一部分包包 → 如實描述可見部分、features 留空或說明
+3. LV 一定要找序號（標籤 / 熱壓印字）、找到填 serial、找不到才 null
+4. 愛馬仕框碼（單一英文字母刻印）找到放進 features、例：'B刻' / '框D'
+5. 輸出純 JSON、絕對不能有 markdown 標記、解釋文字、或前後 prefix
+6. 不確定品牌時 brand 填 '其他'、productName 寫看到的描述
+7. **productName 必填**——AI 一定要組出符合範例風格的字串
 `.trim();
 
 interface PurchaseRecognizeResult {
@@ -1431,12 +1477,18 @@ interface PurchaseRecognizeResult {
   serial: string | null;
   features: string[];
   confidence: number;
-  formattedName: string;
+  productName: string;       // AI 直接生成（不含開頭編號）、對齊蹦闆 Excel 命名習慣
+  formattedName: string;     // 含編號的完整字串（{seq}.{productName}）
   costLog: string;
   price: number | null;
   error?: string;
 }
 
+/**
+ * 拼接 formattedName：
+ * - 優先用 AI 生成的 productName（已對齊蹦闆 Excel 命名習慣）
+ * - productName 為空時 fallback 到舊式 switch（保險、避免 AI 偶爾漏給）
+ */
 function buildPurchaseFormattedName(
   seq: number,
   brand: string,
@@ -1445,17 +1497,26 @@ function buildPurchaseFormattedName(
   size: string | null,
   serial: string | null,
   features: string[],
+  productName?: string,
 ): string {
+  // AI 直接給的 productName 已仿蹦闆風格、最可靠
+  if (productName && productName.trim()) {
+    return `${seq}.${productName.trim()}`;
+  }
+
+  // ---- Fallback：AI 沒給 productName 時用舊式 switch 拼 ----
+  const cleanBrand = brand.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
   const f = features.join('');
-  switch (brand) {
+  switch (cleanBrand) {
     case 'LV': {
       const serialPart = serial ? ` ${serial}` : '';
-      return `${seq}.LV${model}/${color}${serialPart}`.trim();
+      const sizePart = size ? `/${size}` : '';
+      return `${seq}.LV${model}${sizePart}/${color}${serialPart}`.trim();
     }
     case '愛馬仕': {
       const sizePart = size ? ` ${size}` : '';
       const colorPart = color ? `/${color}` : '';
-      const featPart = features.length > 0 ? `/${features.join('/')}` : '';
+      const featPart = features.length > 0 ? ` ${features.join(' ')}` : '';
       return `${seq}.愛馬仕${model}${sizePart}${colorPart}${featPart}`.trim();
     }
     case '香奈兒': {
@@ -1488,7 +1549,7 @@ function buildPurchaseFormattedName(
     default: {
       const colorPart = color ? `/${color}` : '';
       const sizePart = size ? `/${size}` : '';
-      return `${seq}.${brand}${model}${colorPart}${sizePart}`.trim();
+      return `${seq}.${cleanBrand}${model}${colorPart}${sizePart}`.trim();
     }
   }
 }
@@ -1572,6 +1633,7 @@ async function recognizeOnePurchaseImage(
         serial: null,
         features: [],
         confidence: 0,
+        productName: '辨識失敗',
         formattedName: `${imageIndex + 1}.辨識失敗`,
         costLog,
         price: null,
@@ -1597,6 +1659,7 @@ async function recognizeOnePurchaseImage(
     const confidence: number = typeof parsed.confidence === 'number'
       ? Math.min(1, Math.max(0, parsed.confidence as number))
       : 0.5;
+    const productName: string = ((parsed.productName as string) || '').trim();
 
     const formattedName = buildPurchaseFormattedName(
       imageIndex + 1,
@@ -1606,10 +1669,11 @@ async function recognizeOnePurchaseImage(
       size,
       serial,
       features,
+      productName,
     );
 
     console.log(costLog);
-    return { imageIndex, brand, model, color, size, serial, features, confidence, formattedName, costLog, price: null };
+    return { imageIndex, brand, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null };
 
   } catch (err) {
     console.error(`[Purchase] 解析錯誤 image[${imageIndex}]:`, err, 'rawJson:', rawJson.slice(0, 300));
@@ -1622,6 +1686,7 @@ async function recognizeOnePurchaseImage(
       serial: null,
       features: [],
       confidence: 0,
+      productName: '解析錯誤',
       formattedName: `${imageIndex + 1}.解析錯誤`,
       costLog,
       price: null,

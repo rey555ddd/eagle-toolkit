@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   ScanLine, Trash2, RefreshCw, Save, DollarSign, Lock, Eye, EyeOff, LogOut,
-  ShoppingBag,
+  ShoppingBag, Calendar,
 } from 'lucide-react'
 import { useDropzone } from '@/hooks/useDropzone'
 import { useRecognize } from '@/hooks/useRecognize'
@@ -169,6 +169,7 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
 function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
   const dropzone = useDropzone()
   const { results, isRecognizing, progress, totalCostLog, recognize, updateResult, clearResults } = useRecognize()
+  const [arrivalDate, setArrivalDate] = useState<string>('')
 
   const handleRecognize = async () => {
     if (dropzone.files.length === 0) { toast.error('請先上傳照片'); return }
@@ -182,6 +183,7 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleSave = () => {
     if (results.length === 0) { toast.error('沒有辨識結果可儲存'); return }
+    console.log('[採購助手] 儲存批次 — 到貨日期:', arrivalDate || '（未填）', '共', results.length, '件')
     // 輸出 CSV 格式（每行：品牌,型號,顏色,尺寸,序號,特徵,價格,商品名稱,信心度）
     const header = '品牌,型號,顏色,尺寸,序號,特徵,價格(NT$),商品名稱,信心度\n'
     const rows = results.map(r =>
@@ -323,6 +325,27 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
                   <span>{totalCostLog}</span>
                 </div>
               )}
+            </div>
+
+            {/* 到貨日期 */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Calendar size={14} style={{ color: 'oklch(0.72 0.08 75)' }} />
+                <label className="text-xs" style={{ color: 'oklch(0.7 0.02 70)' }}>到貨日期</label>
+              </div>
+              <input
+                type="date"
+                value={arrivalDate}
+                onChange={e => setArrivalDate(e.target.value)}
+                className="px-3 py-1.5 rounded-lg text-sm outline-none"
+                style={{
+                  background: 'oklch(0.1 0.005 60)',
+                  border: '1px solid oklch(0.72 0.08 75 / 30%)',
+                  color: arrivalDate ? 'oklch(0.88 0.01 80)' : 'oklch(0.45 0.02 60)',
+                  colorScheme: 'dark',
+                }}
+              />
+              <span className="text-xs" style={{ color: 'oklch(0.45 0.02 60)' }}>Abby 自己填、整批共用、空白也可</span>
             </div>
 
             {/* 信心度警示 */}
