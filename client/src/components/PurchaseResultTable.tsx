@@ -1,7 +1,7 @@
 /**
  * 採購辨識結果表格 — eagle-toolkit 版
  * 欄位順序（2026-04-30 主公拍板）：
- *   縮圖 / 編號 / 到貨日期 / 品牌 / 型號 / 商品名稱(可編輯) / 顏色 / 尺寸 / 特徵 / 價格 NT$
+ *   編號 / 縮圖 / 到貨日期 / 品牌 / 型號 / 商品名稱(可編輯) / 顏色 / 尺寸 / 特徵 / 價格 NT$
  * - 材質欄已移除（AI 仍辨識、包在商品名稱字串裡）
  * - 品牌 dropdown 全英文
  * - 商品名稱直接可編輯（Abby 可改）
@@ -62,7 +62,12 @@ const INPUT_STYLE: React.CSSProperties = {
   outline: 'none',
 }
 
-const HEADERS = ['縮圖', '編號', '到貨日期', '品牌', '型號', '商品名稱', '顏色', '尺寸', '特徵', '價格 NT$']
+const HEADERS = ['編號', '縮圖', '到貨日期', '品牌', '型號', '商品名稱', '顏色', '尺寸', '特徵', '價格 NT$']
+
+/** 去掉 formattedName 帶的 "1." 前綴，讓商品名稱欄不顯示編號 */
+function stripSeqPrefix(name: string): string {
+  return name.replace(/^\d+\./, '')
+}
 
 export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseResultTableProps) {
   const fileMap = new Map(dropFiles.map(f => [f.id, f]))
@@ -93,6 +98,13 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   borderLeft: lowConf ? '2px solid rgba(249,115,22,0.6)' : undefined,
                 }}
               >
+                {/* 編號 — 自動帶 index+1，唯讀 */}
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className="text-xs font-medium tabular-nums" style={{ color: 'oklch(0.45 0.02 60)' }}>
+                    {index + 1}
+                  </span>
+                </td>
+
                 {/* 縮圖 — 160×200px object-contain，可點開大圖 */}
                 <td className="px-3 py-2">
                   {df ? (
@@ -103,13 +115,6 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                       <span className="text-xs" style={{ color: 'oklch(0.45 0.02 60)' }}>#{r.imageIndex + 1}</span>
                     </div>
                   )}
-                </td>
-
-                {/* 編號 — 自動帶 index+1，唯讀 */}
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <span className="text-xs font-medium tabular-nums" style={{ color: 'oklch(0.45 0.02 60)' }}>
-                    {index + 1}
-                  </span>
                 </td>
 
                 {/* 到貨日期 — 每筆獨立 */}
@@ -149,11 +154,11 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                   />
                 </td>
 
-                {/* 商品名稱 — 可直接編輯（Abby 手改） */}
+                {/* 商品名稱 — 可直接編輯（Abby 手改），不含前綴編號 */}
                 <td className="px-3 py-2">
                   <input
                     type="text"
-                    value={r.productName ?? r.formattedName}
+                    value={stripSeqPrefix(r.productName ?? r.formattedName)}
                     onChange={e => onUpdate(r.id, { productName: e.target.value })}
                     style={{ ...INPUT_STYLE, width: '280px' }}
                     placeholder="商品名稱"
@@ -183,7 +188,7 @@ export function PurchaseResultTable({ results, dropFiles, onUpdate }: PurchaseRe
                 </td>
 
                 {/* 特徵 tag */}
-                <td className="px-3 py-2 w-[260px] align-top">
+                <td className="px-3 py-2 w-[200px] align-top">
                   <FeatureTagEditor
                     value={r.features}
                     onChange={features => onUpdate(r.id, { features })}

@@ -4,11 +4,11 @@
  * - 密碼驗證：cookie based（/api/abby-login、/api/abby-check、/api/abby-logout）
  * - 拖拉上傳 → 批次辨識 → 結果表格（含價格欄）→ 信心度警示
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   ScanLine, Trash2, RefreshCw, Save, DollarSign, Lock, Eye, EyeOff, LogOut,
-  ShoppingBag,
+  ShoppingBag, ArrowUpDown,
 } from 'lucide-react'
 import { useDropzone } from '@/hooks/useDropzone'
 import { useRecognize } from '@/hooks/useRecognize'
@@ -166,9 +166,21 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
 
 // ─── 主儀表板 ─────────────────────────────────────────────────────────────────
 
+type SortKey = 'none' | 'brand' | 'arrivalDate' | 'color' | 'size'
+
 function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
   const dropzone = useDropzone()
   const { results, isRecognizing, progress, totalCostLog, recognize, updateResult, clearResults } = useRecognize()
+  const [sortBy, setSortBy] = useState<SortKey>('none')
+
+  const sortedResults = useMemo(() => {
+    if (sortBy === 'none') return results
+    return [...results].sort((a, b) => {
+      const va = String(a[sortBy] ?? '')
+      const vb = String(b[sortBy] ?? '')
+      return va.localeCompare(vb, 'zh-TW')
+    })
+  }, [results, sortBy])
 
   const handleRecognize = async () => {
     if (dropzone.files.length === 0) { toast.error('請先上傳照片'); return }
@@ -181,7 +193,7 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   const handleSave = () => {
-    if (results.length === 0) { toast.error('沒有辨識結果可儲存'); return }
+    if (sortedResults.length === 0) { toast.error('沒有辨識結果可儲存'); return }
 
     // CSV 跳脫：含 , " \n \r 的值用 " 包起來，內部 " 跳脫成 ""
     function csvEscape(v: string | number | null | undefined): string {
@@ -195,13 +207,14 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
 
     // CSV 欄位順序（2026-04-30 主公拍板）：編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)
     const header = '編號,到貨日期,品牌,型號,商品名稱,顏色,尺寸,特徵,價格(NT$)\n'
-    const rows = results.map((r, idx) =>
+    const rows = sortedResults.map((r, idx) =>
       [
         csvEscape(idx + 1),
         csvEscape(r.arrivalDate ?? ''),
         csvEscape(r.brand),
         csvEscape(r.model),
-        csvEscape(r.productName ?? r.formattedName),
+        // 商品名稱去掉 formattedName 帶的 "1." 前綴
+        csvEscape((r.productName ?? r.formattedName).replace(/^\d+\./, '')),
         csvEscape(r.color),
         csvEscape(r.size ?? ''),
         csvEscape(r.features.join('/')),
@@ -215,7 +228,7 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
     a.download = `採購辨識_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast.success(`已下載 ${results.length} 件辨識結果`)
+    toast.success(`已下載 ${sortedResults.length} 件辨識結果`)
   }
 
   const hasResults = results.length > 0
@@ -307,6 +320,28 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
                 全部重新辨識
               </button>
             )}
+
+            {hasResults && !isRecognizing && (
+              <div className="relative flex items-center gap-1.5">
+                <ArrowUpDown size={13} style={{ color: 'oklch(0.72 0.08 75)' }} />
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as SortKey)}
+                  className="appearance-none pl-1 pr-6 py-1.5 rounded-lg text-xs outline-none"
+                  style={{
+                    background: 'oklch(0.18 0.005 60)',
+                    border: '1px solid oklch(0.72 0.08 75 / 40%)',
+                    color: 'oklch(0.82 0.06 75)',
+                  }}
+                >
+                  <option value="none">原始順序</option>
+                  <option value="brand">品牌</option>
+                  <option value="arrivalDate">到貨日期</option>
+                  <option value="color">顏色</option>
+                  <option value="size">尺寸</option>
+                </select>
+              </div>
+            )}
           </div>
         </section>
 
@@ -356,7 +391,7 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
             )}
 
             <PurchaseResultTable
-              results={results}
+              results={sortedResults}
               dropFiles={dropzone.files}
               onUpdate={updateResult}
             />

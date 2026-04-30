@@ -33,7 +33,7 @@ export function FeatureTagEditor({ value, onChange }: FeatureTagEditorProps) {
   }
 
   return (
-    <div className="flex flex-wrap gap-1 items-center content-start max-h-[68px] overflow-y-auto">
+    <div className="flex flex-col flex-wrap content-start gap-1 max-h-[48px] overflow-x-auto overflow-y-hidden">
       {value.map(tag => (
         <span
           key={tag}
