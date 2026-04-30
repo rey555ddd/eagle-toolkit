@@ -1342,7 +1342,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 
 ## 品牌辨識規則（含中文簡稱、輸出 brand 欄用）
 
-### 香奈兒（中文輸出「香奈兒」、不加英文括號）
+### CHANEL（brand 一律全英文輸出 "CHANEL"）
 - 雙 C 交叉標識、菱格紋縫線
 - 常見型號：CF / Classic Flap / BOY / 19BAG / 22BAG / WOC / Coco Handle / 流浪包 / 金球（Mini Flap）/ 山型紋（Chevron）
 - 尺寸：mini / 20 / 22 / 25 / 26 / 28 / 30 公分
@@ -1354,7 +1354,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 - 常見型號：SPEEDY / NEVERFULL / PASSY / STEAMER / ON THE GO / Capucines / Vavin / Buci / Pont 9 / Camera Box / Cannes / Ipanema / SOFT TRUNK 盒子包 / Keepall / Christopher / On My Side / Discovery / TRIO 三合一 / Multi Pochette / WOC
 - 款型：MM / PM / GM / BB / Mini（這些放進 size 欄）
 
-### 愛馬仕（中文輸出「愛馬仕」、不寫 Hermès）
+### HERMES（brand 一律全英文輸出 "HERMES"、不寫 Hermès / 愛馬仕）
 - 皮革質感極細、縫線工整
 - 常見型號：BIRKIN / KELLY / PICOTIN / HERBAG / 依芙琳 / BOLIDE / LINDY / HALZAN / 菜籃子 / Constance / Steve / Garden Party / Halzan / Roulis / Alfred
 - **框碼必抓**：刻印在五金、單一英文字母（A=2017/B=2018/C=2018/D=2019/X=2016/Y=2020/Z=2021/...）放進 features，格式「框D」「X刻」
@@ -1382,7 +1382,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 ### GOYARD（英文輸出、滿版印花）
 - 常見：SAINT LOUIS 托特 / ANJOU / 滿版馬鞍 / 滿版相機包
 
-### 巴黎世家（中文輸出、不寫 Balenciaga）
+### BALENCIAGA（brand 一律全英文輸出 "BALENCIAGA"、不寫巴黎世家）
 - 機車包（City / NANO CITY / 子母 / 紙袋）/ 沙漏包（鱷魚紋）/ 紙袋包
 
 ### LOEWE（英文輸出）
@@ -1406,7 +1406,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 ### MIUMIU（英文輸出）
 - 皺褶肩背 / 皺褶手提
 
-### 寶格麗（中文輸出）
+### BVLGARI（brand 一律全英文輸出 "BVLGARI"、不寫寶格麗）
 - 蛇頭包 / Serpenti
 
 ### 其他（GIVENCHY / FERRAGAMO / TOD'S 等）
@@ -1419,8 +1419,8 @@ const PURCHASE_SYSTEM_PROMPT = `
 每個品牌的材質詞彙——AI 一定要識別並輸出 \`material\` 欄：
 
 - **LV 紋路（材質類）**：老花（Monogram）/ 棋盤格（Damier）/ 壓紋（Empreinte 浮雕）/ 水波紋（Epi）/ 漆皮（Vernis）/ 拼皮（撞色拼接）/ 牛仔（Denim）
-- **香奈兒皮革**：小羊皮（Lambskin）/ 荔枝皮（Caviar 魚子醬）/ 山羊皮 / 蟒蛇皮 / 山型紋（Chevron）
-- **愛馬仕皮革**：Togo / Clemence / Epsom / Swift / Box / Fjord / Barenia / 帆布（Toile）
+- **CHANEL 皮革**：小羊皮（Lambskin）/ 荔枝皮（Caviar 魚子醬）/ 山羊皮 / 蟒蛇皮 / 山型紋（Chevron）
+- **HERMES 皮革**：Togo / Clemence / Epsom / Swift / Box / Fjord / Barenia / 帆布（Toile）
 - **GUCCI 紋路**：提花（GG Supreme）/ 緹花（Jacquard）/ 壓紋（Embossed）/ 帆布（Canvas）/ 全皮革
 - **DIOR 紋路**：老花（Oblique）/ 藤格紋（Cannage）/ 全皮革 / 鑽石款（Macrocannage）/ 油蠟皮
 - **PRADA**：尼龍（Re-Nylon）/ Saffiano（鋸齒紋皮革）/ 全皮革
@@ -1433,7 +1433,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 
 \`\`\`json
 {
-  "brand": "<品牌中文簡稱、不加英文括號>",
+  "brand": "<品牌**全英文**、見下面清單、不加中文不加括號>",
   "material": "<材質、譬如 '老花' / '小羊皮' / 'Togo' / '編織' / '尼龍' / '提花'、看不清留空 ''>",
   "size": "<大小、譬如 '小款' / '中款' / '26公分' / '30公分' / 'MM' / 'PM' / 'GM' / 'BB' / null>",
   "model": "<型號（產品名稱）、譬如 '19BAG' / 'PASSY新款郵差包' / 'BIRKIN' / 'NIKI' / '黛妃包' / '蛇頭包'。**型號不確定就留空字串 ''**、不要瞎猜。看不到序號或產品標籤、又不認得就留空。>",
@@ -1441,37 +1441,64 @@ const PURCHASE_SYSTEM_PROMPT = `
   "serial": "<序號或 null、LV 必填 M/N 開頭、其他品牌通常 null>",
   "features": ["<特色陣列、譬如 '雙C金扣', '混色鏈條', '30開', '無卡', '芯片', '框D', '2000年', '金扣', '雙提把', '拉鍊開口', '男款'>"],
   "confidence": <0.0 到 1.0 之間的信心分數>,
-  "productName": "<不含編號的完整商品名稱、AI 自己組、嚴格按下面命名順序>",
+  "productName": "<不含編號的完整商品名稱、AI 自己組、嚴格按下面命名順序、品牌**全英文**開頭>",
   "reasoning": "<一句話說明辨識依據>"
 }
 \`\`\`
 
-## productName 命名順序（**主公新規則 2026-04-30 拍板**）
+## **品牌全英文清單（brand 欄 + productName 開頭一律用這個）**
+
+主公明示：**所有品牌名稱都用全英文**、不要中文。
+
+| 中文（舊） | **英文（新、必用）** |
+|---|---|
+| 香奈兒 | **CHANEL** |
+| LV | **LV** |
+| 愛馬仕 | **HERMES** |
+| DIOR | **DIOR** |
+| GUCCI | **GUCCI** |
+| YSL | **YSL** |
+| BV | **BV** |
+| GOYARD | **GOYARD** |
+| 巴黎世家 | **BALENCIAGA** |
+| LOEWE | **LOEWE** |
+| FENDI | **FENDI** |
+| PRADA | **PRADA** |
+| CELINE | **CELINE** |
+| BURBERRY | **BURBERRY** |
+| CHLOE / CHLOÉ | **CHLOE** |
+| MIUMIU | **MIUMIU** |
+| 寶格麗 | **BVLGARI** |
+| 其他 | **OTHER** |
+
+## productName 命名順序（**主公規則 2026-04-30**）
 
 順序固定：**品牌 → 材質 → 大小 → 型號 → 顏色 → 序號 → 特色串**
+品牌**一律全英文**。
 
 範例：
 | 商品 | productName |
 |---|---|
-| 香奈兒 19BAG 黑 小羊皮 | \`香奈兒 小羊皮 小款 19BAG/黑 雙C金扣 混色鏈條\` |
+| CHANEL 19BAG 黑 小羊皮 | \`CHANEL 小羊皮 小款 19BAG/黑 雙C金扣 混色鏈條\` |
 | LV PASSY 老花 咖色 | \`LV 老花 30公分 PASSY新款郵差包/咖 M45592\` |
-| 愛馬仕 BIRKIN 30 灰 Togo | \`愛馬仕 Togo 30 BIRKIN/灰 X刻 2016年 金扣\` |
+| HERMES BIRKIN 30 灰 Togo | \`HERMES Togo 30 BIRKIN/灰 X刻 2016年 金扣\` |
 | GUCCI 圓餅包 提花 | \`GUCCI 提花 圓餅包\`（GUCCI 沒大小就跳過） |
 | BV 對開短夾 編織 灰 | \`BV 編織 短款 對開短夾/灰\` |
 | DIOR BOOK TOTE 老花 中款 | \`DIOR 老花 中款 BOOK TOTE\` |
 | YSL NIKI 中款 黑 | \`YSL 牛皮 中款 NIKI/黑\` |
 | GOYARD 托特包 滿版 綠 | \`GOYARD 滿版花紋 托特包/綠\` |
-| 巴黎世家 機車包 鱷魚紋 黑 | \`巴黎世家 鱷魚紋 S號 沙漏包/黑\` |
+| BALENCIAGA 機車包 鱷魚紋 黑 | \`BALENCIAGA 鱷魚紋 S號 沙漏包/黑\` |
+| BVLGARI 蛇頭包 祖母綠 | \`BVLGARI 全皮革 — 蛇頭包/祖母綠\` |
 
 **型號不確定的情況**：
 | 商品 | productName |
 |---|---|
 | 看不出 LV 具體型號（沒序號、無標籤） | \`LV 老花 中款 /咖\`（型號留空、用 / 分隔顏色） |
-| 香奈兒能看到型號但不確定（無芯片無卡） | \`香奈兒 小羊皮 26公分 /黑金 30開\`（型號留空） |
+| CHANEL 能看到型號但不確定（無芯片無卡） | \`CHANEL 小羊皮 26公分 /黑金 30開\`（型號留空） |
 
 **productName 規則**：
 1. 不要加開頭編號（編號由後端拼）
-2. 品牌用中文簡稱、不加英文括號（「香奈兒」不是「香奈兒（CHANEL）」）
+2. **品牌一律全英文**（譬如 CHANEL / HERMES / BALENCIAGA / BVLGARI、不寫中文）
 3. 各元素用**空格**分隔
 4. 顏色前用 \`/\` 分隔（譬如 \`/黑\`、\`/咖\`、\`/黑金\`）
 5. 序號跟其他特色直接用空格（譬如 \`M45592\` 後面接 \`金扣\`）
@@ -1485,7 +1512,7 @@ const PURCHASE_SYSTEM_PROMPT = `
 1. 若照片模糊、光線差、角度奇怪導致無法辨識 → confidence 給 0.5 以下、不要瞎掰
 2. 只看得到一部分包包 → 如實描述可見部分、features 留空或說明
 3. LV 一定要找序號（標籤 / 熱壓印字）、找到填 serial、找不到才 null
-4. 愛馬仕框碼（單一英文字母刻印）找到放進 features、例：'B刻' / '框D'
+4. HERMES 框碼（單一英文字母刻印）找到放進 features、例：'B刻' / '框D'
 5. **型號不確定就留空 ""、不要瞎猜**——主公明示「沒有也沒關係」
 6. 輸出純 JSON、絕對不能有 markdown 標記、解釋文字、或前後 prefix
 7. 不確定品牌時 brand 填 '其他'、productName 寫看到的描述
@@ -1538,16 +1565,18 @@ function buildPurchaseFormattedName(
       const sizePart = size ? `/${size}` : '';
       return `${seq}.LV${model}${sizePart}/${color}${serialPart}`.trim();
     }
+    case 'HERMES':
     case '愛馬仕': {
       const sizePart = size ? ` ${size}` : '';
       const colorPart = color ? `/${color}` : '';
       const featPart = features.length > 0 ? ` ${features.join(' ')}` : '';
-      return `${seq}.愛馬仕${model}${sizePart}${colorPart}${featPart}`.trim();
+      return `${seq}.HERMES ${model}${sizePart}${colorPart}${featPart}`.trim();
     }
+    case 'CHANEL':
     case '香奈兒': {
       const sizePart = size ? ` ${size}` : '';
       const featPart = f ? ` ${f}` : '';
-      return `${seq}.香奈兒 ${model}/${color}${sizePart}${featPart}`.trim();
+      return `${seq}.CHANEL ${model}/${color}${sizePart}${featPart}`.trim();
     }
     case 'DIOR': {
       const featPart = features.length > 0 ? `/${features.join('')}` : '';
