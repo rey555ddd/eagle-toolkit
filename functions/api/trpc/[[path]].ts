@@ -1730,7 +1730,7 @@ const EAGLE_RADAR_DEFAULT_KEYWORDS = [
 
 const EAGLE_RADAR_APIFY_URL =
   'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/run-sync-get-dataset-items';
-const EAGLE_RADAR_MAX_RESULTS_PER_KW = 30;
+const EAGLE_RADAR_MAX_RESULTS_PER_KW = 10;  // CF Pages Functions 30s limit；Apify 10 筆約 8-15 秒安全範圍
 const EAGLE_RADAR_DEFAULT_BUDGET_NTD = 3500;
 const EAGLE_RADAR_POST_TTL = 30 * 24 * 60 * 60;
 const EAGLE_RADAR_DEDUP_TTL = 24 * 60 * 60;
