@@ -689,6 +689,9 @@ interface Env {
   APIFY_API_TOKEN?: string;       // 賣家雷達用 Apify token
   RADAR_CRON_TOKEN?: string;      // Cron 自動掃描用內部 token
   EAGLE_RADAR_KV?: KVNamespace;  // 賣家雷達獨立 KV（絕不共用其他品牌）
+  // ── 採購庫存（Day 3 新增）────────────────────────────────────────────
+  EAGLE_D1?: D1Database;          // 採購 / 庫存 D1（獨立 binding，指向 eagle-toolkit-db）
+  EAGLE_MODELS_KV?: KVNamespace; // 蹦闆型號資料庫 KV（bbang:model:{brand}:{serial}）
 }
 
 interface Context {
@@ -1862,6 +1865,88 @@ const purchaseRouter = router({
         imageCount: images.length,
       };
     }),
+
+  // ─── saveBatch：將辨識結果真寫入 D1（採購紀錄）────────────────────────────
+  // input:  { arrivalDate, items: [...] }
+  // output: { batchId, itemCount, totalAmountNT }
+  // 守門：cookie eagle_abby_auth（middleware 已處理）
+  saveBatch: publicProcedure
+    .input(
+      z.object({
+        arrivalDate: z.string().min(1, '到貨日期必填'),
+        items: z
+          .array(
+            z.object({
+              brand: z.string().min(1),
+              serial: z.string().optional().nullable(),
+              productName: z.string().min(1),
+              color: z.string().optional().default(''),
+              priceNT: z.number().int().nonnegative('價格不能為負'),
+              quantity: z.number().int().positive().default(1),
+              confidence: z.number().min(0).max(1).optional(),
+              thumbnailUrl: z.string().optional().nullable(),
+            }),
+          )
+          .min(1, '至少要有 1 件商品'),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定，請在 CF Dashboard 設定 D1 database');
+
+      const batchId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const totalAmountNT = input.items.reduce((sum, it) => sum + it.priceNT * it.quantity, 0);
+      const itemCount = input.items.reduce((sum, it) => sum + it.quantity, 0);
+
+      // 1. 寫 purchase_batch
+      await db
+        .prepare(
+          `INSERT INTO purchase_batch (id, arrivalDate, totalAmountNT, itemCount, createdAt, createdBy)
+           VALUES (?, ?, ?, ?, ?, 'Abby')`,
+        )
+        .bind(batchId, input.arrivalDate, totalAmountNT, itemCount, now)
+        .run();
+
+      // 2. 為每個 item 寫 purchase_item + inventory_item
+      for (const item of input.items) {
+        const itemId = crypto.randomUUID();
+        const invId = crypto.randomUUID();
+
+        await db
+          .prepare(
+            `INSERT INTO purchase_item
+               (id, batchId, brand, serial, productName, color, priceNT, quantity, confidence, thumbnailUrl, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            itemId,
+            batchId,
+            item.brand,
+            item.serial ?? null,
+            item.productName,
+            item.color,
+            item.priceNT,
+            item.quantity,
+            item.confidence ?? null,
+            item.thumbnailUrl ?? null,
+            now,
+          )
+          .run();
+
+        // 同時建庫存紀錄 status=in_store
+        await db
+          .prepare(
+            `INSERT INTO inventory_item (id, itemId, status, updatedAt)
+             VALUES (?, ?, 'in_store', ?)`,
+          )
+          .bind(invId, itemId, now)
+          .run();
+      }
+
+      return { batchId, itemCount, totalAmountNT };
+    }),
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2220,6 +2305,382 @@ const eagleRadarRouter = router({
     }),
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 蹦闆精品 Abby 專區 — inventoryRouter（庫存管理）
+// 守門：cookie eagle_abby_auth（middleware 已處理）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const inventoryRouter = router({
+  /**
+   * list — 列出庫存（JOIN purchase_item + inventory_item）
+   * input:  { status?, brand?, limit?, offset? }
+   * output: { items, total }
+   */
+  list: publicProcedure
+    .input(
+      z.object({
+        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear', 'all']).default('in_store'),
+        brand: z.string().optional(),
+        limit: z.number().int().min(1).max(500).default(100),
+        offset: z.number().int().nonnegative().default(0),
+      }).optional(),
+    )
+    .query(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定');
+
+      const status = input?.status ?? 'in_store';
+      const brand = input?.brand;
+      const limit = input?.limit ?? 100;
+      const offset = input?.offset ?? 0;
+
+      const whereParts: string[] = [];
+      const bindings: (string | number)[] = [];
+
+      if (status !== 'all') {
+        whereParts.push('inv.status = ?');
+        bindings.push(status);
+      }
+      if (brand) {
+        whereParts.push('pi.brand = ?');
+        bindings.push(brand);
+      }
+
+      const whereSQL = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+      const countRes = await db
+        .prepare(
+          `SELECT COUNT(*) as n
+           FROM inventory_item inv
+           JOIN purchase_item pi ON pi.id = inv.itemId
+           ${whereSQL}`,
+        )
+        .bind(...bindings)
+        .first<{ n: number }>();
+
+      const total = countRes?.n ?? 0;
+
+      const rows = await db
+        .prepare(
+          `SELECT
+             inv.id        AS inventoryId,
+             inv.status,
+             inv.soldAt,
+             inv.soldPriceNT,
+             inv.location,
+             inv.notes,
+             inv.updatedAt,
+             pi.id         AS itemId,
+             pi.batchId,
+             pi.brand,
+             pi.serial,
+             pi.productName,
+             pi.color,
+             pi.priceNT,
+             pi.quantity,
+             pi.confidence,
+             pi.thumbnailUrl,
+             pi.createdAt
+           FROM inventory_item inv
+           JOIN purchase_item pi ON pi.id = inv.itemId
+           ${whereSQL}
+           ORDER BY pi.createdAt DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .bind(...bindings, limit, offset)
+        .all<{
+          inventoryId: string;
+          status: string;
+          soldAt: string | null;
+          soldPriceNT: number | null;
+          location: string | null;
+          notes: string | null;
+          updatedAt: string;
+          itemId: string;
+          batchId: string;
+          brand: string;
+          serial: string | null;
+          productName: string;
+          color: string;
+          priceNT: number;
+          quantity: number;
+          confidence: number | null;
+          thumbnailUrl: string | null;
+          createdAt: string;
+        }>();
+
+      return { items: rows.results, total };
+    }),
+
+  /**
+   * updateStatus — 更新庫存狀態（賣出 / 寄賣 / 待清倉 等）
+   */
+  updateStatus: publicProcedure
+    .input(
+      z.object({
+        inventoryId: z.string().min(1),
+        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear']),
+        soldPriceNT: z.number().int().nonnegative().optional().nullable(),
+        soldAt: z.string().optional().nullable(),
+        location: z.string().max(200).optional().nullable(),
+        notes: z.string().max(1000).optional().nullable(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定');
+
+      const now = new Date().toISOString();
+      await db
+        .prepare(
+          `UPDATE inventory_item
+           SET status = ?, soldPriceNT = ?, soldAt = ?, location = ?, notes = ?, updatedAt = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          input.status,
+          input.soldPriceNT ?? null,
+          input.soldAt ?? null,
+          input.location ?? null,
+          input.notes ?? null,
+          now,
+          input.inventoryId,
+        )
+        .run();
+
+      return { ok: true };
+    }),
+
+  /**
+   * addToModelDb — 新增 / 更新蹦闆型號資料庫（D1 + KV 雙寫）
+   * KV key: bbang:model:{brand}:{serial}
+   */
+  addToModelDb: publicProcedure
+    .input(
+      z.object({
+        brand: z.string().min(1),
+        serial: z.string().min(1),
+        productName: z.string().min(1),
+        photoUrl: z.string().optional().nullable(),
+        notes: z.string().max(500).optional().nullable(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      const kv: KVNamespace | undefined = env?.EAGLE_MODELS_KV;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定');
+
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      const brandUpper = input.brand.toUpperCase();
+
+      // D1 upsert（UNIQUE constraint on brand+serial）
+      const result = await db
+        .prepare(
+          `INSERT INTO bbang_models (id, brand, serial, productName, photoUrl, addedBy, addedAt, verifiedTimes, notes)
+           VALUES (?, ?, ?, ?, ?, 'Abby', ?, 1, ?)
+           ON CONFLICT(brand, serial) DO UPDATE SET
+             verifiedTimes = verifiedTimes + 1,
+             productName = excluded.productName,
+             photoUrl = COALESCE(excluded.photoUrl, photoUrl),
+             notes = COALESCE(excluded.notes, notes)`,
+        )
+        .bind(id, brandUpper, input.serial, input.productName, input.photoUrl ?? null, now, input.notes ?? null)
+        .run();
+
+      const isNew = (result.meta.changes ?? 0) > 0 && !result.meta.last_row_id;
+
+      // KV 雙寫（快速查找用）
+      if (kv) {
+        const kvKey = `bbang:model:${brandUpper}:${input.serial}`;
+        const kvValue = JSON.stringify({
+          productName: input.productName,
+          brand: brandUpper,
+          serial: input.serial,
+          photoUrl: input.photoUrl ?? null,
+          addedBy: 'Abby',
+          addedAt: now,
+          notes: input.notes ?? null,
+        });
+        await kv.put(kvKey, kvValue);
+      }
+
+      return { ok: true, isNew };
+    }),
+
+  /**
+   * getStats — 庫存統計（給 Day 3.4 dashboard 用）
+   */
+  getStats: publicProcedure
+    .query(async ({ ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定');
+
+      // 各狀態數量
+      const statusRows = await db
+        .prepare(
+          `SELECT inv.status, COUNT(*) as n, SUM(pi.priceNT * pi.quantity) as totalNT
+           FROM inventory_item inv
+           JOIN purchase_item pi ON pi.id = inv.itemId
+           GROUP BY inv.status`,
+        )
+        .all<{ status: string; n: number; totalNT: number }>();
+
+      const byStatus: Record<string, { count: number; totalNT: number }> = {
+        in_store: { count: 0, totalNT: 0 },
+        sold: { count: 0, totalNT: 0 },
+        consigned: { count: 0, totalNT: 0 },
+        pending_clear: { count: 0, totalNT: 0 },
+      };
+      let totalItems = 0;
+      let totalValueNT = 0;
+      for (const r of statusRows.results) {
+        byStatus[r.status] = { count: r.n, totalNT: r.totalNT ?? 0 };
+        totalItems += r.n;
+        totalValueNT += r.totalNT ?? 0;
+      }
+
+      // 各品牌分布
+      const brandRows = await db
+        .prepare(
+          `SELECT pi.brand, COUNT(*) as count, SUM(pi.priceNT * pi.quantity) as totalValueNT
+           FROM purchase_item pi
+           JOIN inventory_item inv ON inv.itemId = pi.id
+           WHERE inv.status != 'sold'
+           GROUP BY pi.brand
+           ORDER BY count DESC`,
+        )
+        .all<{ brand: string; count: number; totalValueNT: number }>();
+
+      // 平均周轉天數（已售商品）
+      const turnoverRow = await db
+        .prepare(
+          `SELECT AVG(
+             CAST(julianday(inv.soldAt) - julianday(pi.createdAt) AS REAL)
+           ) as avgDays
+           FROM inventory_item inv
+           JOIN purchase_item pi ON pi.id = inv.itemId
+           WHERE inv.status = 'sold' AND inv.soldAt IS NOT NULL`,
+        )
+        .first<{ avgDays: number | null }>();
+
+      // 月趨勢（近 6 個月）
+      const monthlyRows = await db
+        .prepare(
+          `SELECT
+             substr(pb.createdAt, 1, 7) as month,
+             COUNT(DISTINCT pb.id) as batches,
+             SUM(pb.itemCount) as items,
+             SUM(pb.totalAmountNT) as totalNT
+           FROM purchase_batch pb
+           GROUP BY month
+           ORDER BY month DESC
+           LIMIT 6`,
+        )
+        .all<{ month: string; batches: number; items: number; totalNT: number }>();
+
+      return {
+        totalItems,
+        totalValueNT,
+        byStatus,
+        byBrand: brandRows.results,
+        avgTurnoverDays: turnoverRow?.avgDays ?? null,
+        monthlyTrend: monthlyRows.results.reverse(),
+      };
+    }),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// migrateRouter — 建立 Day 3 所需 D1 tables（一次性呼叫即可）
+// 守門：X-Migrate-Token header 需等於 EAGLE_ABBY_PASSWORD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const migrateRouter = router({
+  run: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const expectedPw = env?.EAGLE_ABBY_PASSWORD ?? 'Abby888';
+      if (input.token !== expectedPw) throw new Error('未授權');
+
+      const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
+      if (!db) throw new Error('EAGLE_D1 binding 未設定');
+
+      const sqls = [
+        `CREATE TABLE IF NOT EXISTS purchase_batch (
+          id TEXT PRIMARY KEY,
+          arrivalDate TEXT NOT NULL,
+          totalAmountNT INTEGER NOT NULL,
+          itemCount INTEGER NOT NULL,
+          createdAt TEXT NOT NULL,
+          createdBy TEXT DEFAULT 'Abby'
+        )`,
+        `CREATE TABLE IF NOT EXISTS purchase_item (
+          id TEXT PRIMARY KEY,
+          batchId TEXT NOT NULL,
+          brand TEXT NOT NULL,
+          serial TEXT,
+          productName TEXT,
+          color TEXT,
+          priceNT INTEGER NOT NULL,
+          quantity INTEGER DEFAULT 1,
+          confidence REAL,
+          thumbnailUrl TEXT,
+          createdAt TEXT NOT NULL,
+          FOREIGN KEY (batchId) REFERENCES purchase_batch(id)
+        )`,
+        `CREATE TABLE IF NOT EXISTS inventory_item (
+          id TEXT PRIMARY KEY,
+          itemId TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'in_store',
+          soldAt TEXT,
+          soldPriceNT INTEGER,
+          location TEXT,
+          notes TEXT,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (itemId) REFERENCES purchase_item(id)
+        )`,
+        `CREATE TABLE IF NOT EXISTS bbang_models (
+          id TEXT PRIMARY KEY,
+          brand TEXT NOT NULL,
+          serial TEXT NOT NULL,
+          productName TEXT NOT NULL,
+          photoUrl TEXT,
+          addedBy TEXT DEFAULT 'Abby',
+          addedAt TEXT NOT NULL,
+          verifiedTimes INTEGER DEFAULT 1,
+          notes TEXT,
+          UNIQUE(brand, serial)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_purchase_item_batch ON purchase_item(batchId)`,
+        `CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory_item(status)`,
+        `CREATE INDEX IF NOT EXISTS idx_bbang_brand_serial ON bbang_models(brand, serial)`,
+      ];
+
+      const results: string[] = [];
+      for (const sql of sqls) {
+        try {
+          await db.prepare(sql).run();
+          results.push('OK: ' + sql.slice(0, 60).replace(/\s+/g, ' '));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // already exists = acceptable
+          if (msg.includes('already exists') || msg.includes('duplicate')) {
+            results.push('SKIP(exists): ' + sql.slice(0, 60).replace(/\s+/g, ' '));
+          } else {
+            throw new Error(`Migration failed at: ${sql.slice(0, 80)}\nError: ${msg}`);
+          }
+        }
+      }
+
+      return { ok: true, results };
+    }),
+});
+
 // ─── tRPC Routes ──────────────────────────────────────────────────────────────
 
 const appRouter = router({
@@ -2547,6 +3008,16 @@ ${input.originalText}
   // ─ Apify Threads 關鍵字掃描、KV 入庫、預算守門
   // ══════════════════════════════════════════════════════════════════════════
   eagleRadar: eagleRadarRouter,
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 庫存管理（蹦闆精品 Abby 專區）
+  // ─ D1 EAGLE_D1 + KV EAGLE_MODELS_KV
+  // ─ 受 middleware 密碼守門（eagle_abby_auth cookie）
+  // ══════════════════════════════════════════════════════════════════════════
+  inventory: inventoryRouter,
+
+  // ── 建表 migration（一次性執行）────────────────────────────────────────
+  migrate: migrateRouter,
 });
 
 export type AppRouter = typeof appRouter;

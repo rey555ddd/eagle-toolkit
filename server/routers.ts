@@ -77,8 +77,60 @@ async function callGeminiText(systemPrompt: string, userPrompt: string): Promise
 }
 
 
+// ─── 庫存盤點 router（Day 3.1 蕭何正式版上線前的型別 stub）─────────────────────
+// 功能已在前端實作完畢，等蕭何完成後端後直接接通
+const inventoryRouter = router({
+  list: publicProcedure
+    .input(
+      z.object({
+        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear']).optional(),
+        brand: z.string().optional(),
+        limit: z.number().min(1).max(200).default(50),
+        offset: z.number().min(0).default(0),
+      }).optional()
+    )
+    .query(async () => {
+      throw new Error('inventory.list 尚未實作，等蕭何 Day 3.1 完成後端');
+    }),
+
+  updateStatus: publicProcedure
+    .input(
+      z.object({
+        inventoryId: z.string().min(1),
+        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear']),
+        soldPriceNT: z.number().positive().optional(),
+        soldAt: z.string().optional(),
+        location: z.string().max(200).optional(),
+        notes: z.string().max(1000).optional(),
+      })
+    )
+    .mutation(async () => {
+      throw new Error('inventory.updateStatus 尚未實作，等蕭何 Day 3.1 完成後端');
+    }),
+
+  addToModelDb: publicProcedure
+    .input(
+      z.object({
+        brand: z.string().min(1).max(100),
+        serial: z.string().max(100).optional(),
+        productName: z.string().min(1).max(300),
+        photoUrl: z.string().url().optional(),
+        notes: z.string().max(1000).optional(),
+      })
+    )
+    .mutation(async () => {
+      throw new Error('inventory.addToModelDb 尚未實作，等蕭何 Day 3.1 完成後端');
+    }),
+
+  getStats: publicProcedure
+    .query(async () => {
+      throw new Error('inventory.getStats 尚未實作，等蕭何 Day 3.1 完成後端');
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
+  inventory: inventoryRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -312,6 +364,28 @@ ${input.originalText}
       .mutation(async () => {
         throw new Error("採購助手僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
       }),
+
+    saveBatch: publicProcedure
+      .input(
+        z.object({
+          arrivalDate: z.string().min(1),
+          items: z.array(
+            z.object({
+              brand: z.string().min(1),
+              serial: z.string().optional().nullable(),
+              productName: z.string().min(1),
+              color: z.string().optional().default(""),
+              priceNT: z.number().int().nonnegative(),
+              quantity: z.number().int().positive().default(1),
+              confidence: z.number().min(0).max(1).optional(),
+              thumbnailUrl: z.string().optional().nullable(),
+            }),
+          ).min(1),
+        }),
+      )
+      .mutation(async () => {
+        throw new Error("採購助手僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
   }),
 
   // ─── 賣家雷達（Abby 專用）────────────────────────────────────────────────────
@@ -349,9 +423,70 @@ ${input.originalText}
         throw new Error("賣家雷達僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
       }),
   }),
+
+  // ─── 庫存管理（Abby 專用）────────────────────────────────────────────────────
+  // dev mode stub（僅 production CF Pages 支援 D1 + KV）
+  inventory: router({
+    list: publicProcedure
+      .input(
+        z.object({
+          status: z.enum(["in_store", "sold", "consigned", "pending_clear", "all"]).default("in_store"),
+          brand: z.string().optional(),
+          limit: z.number().int().min(1).max(500).default(100),
+          offset: z.number().int().nonnegative().default(0),
+        }).optional(),
+      )
+      .query(async () => {
+        throw new Error("庫存管理僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+
+    updateStatus: publicProcedure
+      .input(
+        z.object({
+          inventoryId: z.string().min(1),
+          status: z.enum(["in_store", "sold", "consigned", "pending_clear"]),
+          soldPriceNT: z.number().int().nonnegative().optional().nullable(),
+          soldAt: z.string().optional().nullable(),
+          location: z.string().max(200).optional().nullable(),
+          notes: z.string().max(1000).optional().nullable(),
+        }),
+      )
+      .mutation(async () => {
+        throw new Error("庫存管理僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+
+    addToModelDb: publicProcedure
+      .input(
+        z.object({
+          brand: z.string().min(1),
+          serial: z.string().min(1),
+          productName: z.string().min(1),
+          photoUrl: z.string().optional().nullable(),
+          notes: z.string().max(500).optional().nullable(),
+        }),
+      )
+      .mutation(async () => {
+        throw new Error("庫存管理僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+
+    getStats: publicProcedure
+      .query(async () => {
+        throw new Error("庫存管理僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+  }),
+
+  // ─── Migration（一次性建表）───────────────────────────────────────────────────
+  migrate: router({
+    run: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async () => {
+        throw new Error("Migration 僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+
 
 // ─── 採購助手輔助函式 ─────────────────────────────────────────────────────────
 
