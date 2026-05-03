@@ -2063,6 +2063,8 @@ interface EagleRadarPost {
 interface ApifyThreadsItem {
   id?: string;
   url?: string;
+  postUrl?: string;  // [2026-05-04 補] Apify futurizerush 新版回傳欄位
+  rank?: number;
   username?: string;
   userId?: string;
   text?: string;
@@ -2146,16 +2148,17 @@ async function fetchEagleRadarThreadsKeyword(
 }
 
 function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPost | null {
-  const rawId = item.id || item.url || null;
+  // [2026-05-04 修] Apify futurizerush 回傳欄位是 postUrl 不是 url、且無 id
+  const rawId = item.id || item.url || item.postUrl || null;
   if (!rawId) return null;
 
   const author = item.username || 'unknown';
   const content = (item.text || '').trim();
   if (!content) return null;
 
-  const postUrl = item.url || `https://www.threads.com/p/${rawId}`;
+  const postUrl = item.postUrl || item.url || `https://www.threads.com/p/${rawId}`;
   const scrapedAt = new Date().toISOString();
-  const threadsId = rawId.replace(/^https?:\/\/.*\/p\//, '').replace(/\/$/, '');
+  const threadsId = rawId.replace(/^https?:\/\/.*\/post\//, '').replace(/^https?:\/\/.*\/p\//, '').replace(/\/$/, '');
 
   return {
     id: `threads:${threadsId}`,
