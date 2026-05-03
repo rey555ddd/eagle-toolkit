@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import { toast } from "sonner";
+import LoginGate from "@/components/LoginGate";
 import {
   Radar as RadarIcon,
   RefreshCw,
@@ -32,6 +33,14 @@ type EaglePost = {
 };
 
 export default function EagleRadarPage() {
+  return (
+    <LoginGate>
+      <EagleRadarContent />
+    </LoginGate>
+  );
+}
+
+function EagleRadarContent() {
   const [statusFilter, setStatusFilter] = useState<"pending" | "contacted" | "matched" | "rejected" | "all">("pending");
 
   // listPending query — 進頁面自動跑（内部 best-effort auto-sync）
