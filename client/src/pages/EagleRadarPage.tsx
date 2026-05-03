@@ -14,6 +14,7 @@ import {
   Check,
   X,
   CircleDollarSign,
+  Copy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -24,8 +25,9 @@ type EaglePost = {
   authorId?: string;
   content: string;
   scrapedAt: string;
+  publishedAt?: string;
   status: "pending" | "contacted" | "matched" | "rejected";
-  source: "threads";
+  source: "threads" | "facebook";
   keyword: string;
 };
 
@@ -50,7 +52,8 @@ export default function EagleRadarPage() {
         toast.warning(res.message ?? "預算已滿");
         return;
       }
-      toast.success(`掃描已啟動（${res.keyword}），約 2-3 分鐘後自動同步，或點「同步結果」`);
+      const platformLabel = (res as any).platform === 'facebook' ? 'Facebook' : 'Threads';
+      toast.success(`掃描已啟動（${platformLabel}・${res.keyword}），約 2-3 分鐘後自動同步，或點「同步結果」`);
       // 不立刻 refetch，等 actor 跑完
     },
     onError: (e) => toast.error("啟動掃描失敗：" + e.message),
@@ -268,6 +271,16 @@ function PostCard({
   post: EaglePost;
   onUpdateStatus: (status: "pending" | "contacted" | "matched" | "rejected") => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(
+      '歡迎諮詢伊果精品，我們高價收購。https://www.facebook.com/EagleShopping'
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   const statusColors: Record<string, string> = {
     pending: "#f0c040",
     contacted: "#3b82f6",
@@ -282,13 +295,20 @@ function PostCard({
   };
   const color = statusColors[post.status] ?? "#94a3b8";
 
-  const ageMin = Math.floor(
-    (Date.now() - new Date(post.scrapedAt).getTime()) / 60000
-  );
+  const sourceBadge = {
+    threads: { label: 'Threads', bg: 'rgba(168,85,247,0.2)', color: '#c4b5fd' },
+    facebook: { label: 'Facebook', bg: 'rgba(59,130,246,0.2)', color: '#93c5fd' },
+  };
+  const badge = sourceBadge[post.source as keyof typeof sourceBadge] ?? sourceBadge.threads;
+
+  const displayTime = post.publishedAt || post.scrapedAt;
+  const ageMin = Math.floor((Date.now() - new Date(displayTime).getTime()) / 60000);
   const ageText =
     ageMin < 60
       ? `${ageMin} 分鐘前`
-      : `${Math.floor(ageMin / 60)} 小時前`;
+      : ageMin < 1440
+      ? `${Math.floor(ageMin / 60)} 小時前`
+      : `${Math.floor(ageMin / 1440)} 天前`;
 
   return (
     <div
@@ -304,9 +324,9 @@ function PostCard({
         <div className="flex items-center gap-2 flex-wrap">
           <span
             className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-            style={{ background: "rgba(168,85,247,0.2)", color: "#c4b5fd" }}
+            style={{ background: badge.bg, color: badge.color }}
           >
-            Threads
+            {badge.label}
           </span>
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
@@ -344,6 +364,19 @@ function PostCard({
 
       {/* Actions */}
       <div className="flex gap-2 pt-1 flex-wrap">
+        <button
+          onClick={handleCopy}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+          style={{
+            background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(240,192,64,0.15)',
+            border: copied ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(240,192,64,0.4)',
+            color: copied ? '#86efac' : '#f0c040',
+          }}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? '已複製！' : '複製文案'}
+        </button>
+
         <a
           href={post.postUrl}
           target="_blank"
