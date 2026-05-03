@@ -2055,8 +2055,9 @@ interface EagleRadarPost {
   authorId?: string;
   content: string;
   scrapedAt: string;
+  publishedAt?: string;  // [2026-05-04 新增] 原始發文時間（ISO 8601）
   status: 'pending' | 'contacted' | 'matched' | 'rejected';
-  source: 'threads';
+  source: 'threads' | 'facebook';  // [2026-05-04 擴充] 加 facebook
   keyword: string;
 }
 
@@ -2068,7 +2069,7 @@ interface ApifyThreadsItem {
   username?: string;
   userId?: string;
   text?: string;
-  timestamp?: string;
+  timestamp?: string | number;  // [2026-05-04 擴充] 可能是 ISO string 或 Unix timestamp number
   createdAt?: string;
 }
 
@@ -2083,13 +2084,26 @@ const EAGLE_RADAR_DEFAULT_KEYWORDS = [
   '二手 名牌包',
 ] as const;
 
+// [2026-05-04 新增] Facebook 公開搜尋關鍵字（比 Threads 短一點）
+const EAGLE_RADAR_FB_KEYWORDS = [
+  '出售 LV',
+  '出售 香奈兒',
+  '出售 愛馬仕',
+  '二手 名牌包',
+] as const;
+
 // [2026-05-04 異步架構] fire-and-poll：改用 /runs 端點立即取 runId，避免 CF Pages 100s wall-clock timeout
 const EAGLE_RADAR_APIFY_RUN_URL =
   'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/runs';
+// [2026-05-04 新增] Facebook 公開貼文搜尋 actor
+const EAGLE_RADAR_FB_APIFY_RUN_URL =
+  'https://api.apify.com/v2/acts/danek~facebook-search-ppr/runs';
 // 舊的同步端點保留作為常數備查（已不使用）
 // const EAGLE_RADAR_APIFY_URL =
 //   'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/run-sync-get-dataset-items';
 const EAGLE_RADAR_MAX_RESULTS_PER_KW = 10;  // Apify actor maxResults 參數
+const EAGLE_RADAR_FB_MAX_RESULTS = 10;       // [2026-05-04] FB actor resultsLimit 參數
+const EAGLE_RADAR_30_DAYS_MS = 30 * 24 * 60 * 60 * 1000;  // [2026-05-04] 30 天篩選毫秒數
 const EAGLE_RADAR_DEFAULT_BUDGET_NTD = 3500;
 const EAGLE_RADAR_POST_TTL = 30 * 24 * 60 * 60;
 const EAGLE_RADAR_DEDUP_TTL = 24 * 60 * 60;
@@ -2129,18 +2143,25 @@ function eagleRadarContentFingerprint(content: string): string {
 }
 
 // [2026-05-04 異步架構] fire-only：POST /runs 立即取 runId，不等 actor 完成
+// [2026-05-04 擴充] 加 platform 參數支援 threads / facebook
 async function fireEagleRadarApifyRun(
   apifyToken: string,
   keyword: string,
+  platform: 'threads' | 'facebook' = 'threads',
 ): Promise<string> {
-  const url = `${EAGLE_RADAR_APIFY_RUN_URL}?token=${apifyToken}`;
+  const runUrl = platform === 'facebook'
+    ? EAGLE_RADAR_FB_APIFY_RUN_URL
+    : EAGLE_RADAR_APIFY_RUN_URL;
+  const url = `${runUrl}?token=${apifyToken}`;
+
+  const body = platform === 'facebook'
+    ? { searchQuery: keyword, resultsLimit: EAGLE_RADAR_FB_MAX_RESULTS, searchType: 'posts' }
+    : { keywords: [keyword], maxResults: String(EAGLE_RADAR_MAX_RESULTS_PER_KW) };
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      keywords: [keyword],
-      maxResults: String(EAGLE_RADAR_MAX_RESULTS_PER_KW),
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -2176,18 +2197,18 @@ async function getApifyRunStatus(
   };
 }
 
-// [2026-05-04 異步架構] 從 dataset 拉 items
+// [2026-05-04 異步架構] 從 dataset 拉 items（泛化回傳，呼叫端自行轉型）
 async function fetchApifyDatasetItems(
   apifyToken: string,
   datasetId: string,
-): Promise<ApifyThreadsItem[]> {
+): Promise<(ApifyThreadsItem | ApifyFbItem)[]> {
   const url = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}&clean=true&format=json`;
   const res = await fetch(url);
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`拉 dataset items 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
   }
-  const items = await res.json() as ApifyThreadsItem[];
+  const items = await res.json() as (ApifyThreadsItem | ApifyFbItem)[];
   return Array.isArray(items) ? items : [];
 }
 
@@ -2198,6 +2219,19 @@ interface EagleRadarPendingRun {
   runId: string;
   keyword: string;
   startedAt: string;
+  platform: 'threads' | 'facebook';  // [2026-05-04 新增] 平台標記
+}
+
+// [2026-05-04 新增] Facebook actor 回傳格式
+interface ApifyFbItem {
+  postId?: string;
+  url?: string;
+  text?: string;
+  time?: string;        // ISO 8601 發文時間
+  timestamp?: number;  // Unix timestamp（備用）
+  pageName?: string;
+  pageId?: string;
+  likes?: number;
 }
 
 function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPost | null {
@@ -2208,6 +2242,17 @@ function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPo
   const author = item.username || 'unknown';
   const content = (item.text || '').trim();
   if (!content) return null;
+
+  // [2026-05-04 新增] 30 天篩選
+  const publishedAt: string | undefined = item.timestamp
+    ? (typeof item.timestamp === 'number'
+        ? new Date(item.timestamp * 1000).toISOString()
+        : item.timestamp)
+    : item.createdAt || undefined;
+  if (publishedAt) {
+    const age = Date.now() - new Date(publishedAt).getTime();
+    if (age > EAGLE_RADAR_30_DAYS_MS) return null;
+  }
 
   const postUrl = item.postUrl || item.url || `https://www.threads.com/p/${rawId}`;
   const scrapedAt = new Date().toISOString();
@@ -2225,8 +2270,42 @@ function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPo
     authorId: item.userId || undefined,
     content,
     scrapedAt,
+    publishedAt,
     status: 'pending',
     source: 'threads',
+    keyword,
+  };
+}
+
+// [2026-05-04 新增] Facebook actor 轉換函數（含 30 天篩選）
+function toEagleRadarFbPost(item: ApifyFbItem, keyword: string): EagleRadarPost | null {
+  const rawId = item.postId || item.url || null;
+  if (!rawId) return null;
+  const content = (item.text || '').trim();
+  if (!content) return null;
+
+  // 30 天篩選
+  const publishedAt: string | undefined = item.time
+    ? item.time
+    : (item.timestamp ? new Date(item.timestamp * 1000).toISOString() : undefined);
+  if (publishedAt) {
+    const age = Date.now() - new Date(publishedAt).getTime();
+    if (age > EAGLE_RADAR_30_DAYS_MS) return null;
+  }
+
+  const postUrl = item.url || `https://www.facebook.com/${rawId}`;
+  const fbId = rawId.replace(/[?#].*$/, '').slice(0, 100);
+
+  return {
+    id: `facebook:${fbId}`,
+    postUrl,
+    author: item.pageName || 'unknown',
+    authorId: item.pageId,
+    content,
+    scrapedAt: new Date().toISOString(),
+    publishedAt,
+    status: 'pending',
+    source: 'facebook',
     keyword,
   };
 }
@@ -2268,41 +2347,54 @@ const eagleRadarRouter = router({
         return {
           runId: null,
           keyword: null,
+          platform: null as null,
           status: 'budget_exceeded' as const,
           message: `本月費用 NT$${costMonth} 已達預算 NT$${budget}，請調整預算或等下個月`,
         };
       }
 
-      // 決定這次掃的 keyword（一次只跑一個、輪流消化清單）
+      // [2026-05-04 擴充] 決定這次掃的 keyword 和平台（Threads 8kw + FB 4kw 輪流，共 12 個 slot）
+      const ALL_SOURCES: Array<{ platform: 'threads' | 'facebook'; keyword: string }> = [
+        ...EAGLE_RADAR_DEFAULT_KEYWORDS.map(kw => ({ platform: 'threads' as const, keyword: kw })),
+        ...EAGLE_RADAR_FB_KEYWORDS.map(kw => ({ platform: 'facebook' as const, keyword: kw })),
+      ];
+
       let keyword: string;
+      let platform: 'threads' | 'facebook';
+
       if (input?.keywords?.length) {
+        // 手動指定時預設 threads（保持向後相容）
         keyword = input.keywords[0];
+        platform = 'threads';
       } else {
-        const idxRaw = await kv.get('scan:nextKwIdx');
-        const idx = Number.parseInt(idxRaw || '0', 10) % EAGLE_RADAR_DEFAULT_KEYWORDS.length;
-        keyword = EAGLE_RADAR_DEFAULT_KEYWORDS[idx];
-        await kv.put('scan:nextKwIdx', String((idx + 1) % EAGLE_RADAR_DEFAULT_KEYWORDS.length));
+        const idxRaw = await kv.get('scan:nextSourceIdx');
+        const idx = Number.parseInt(idxRaw || '0', 10) % ALL_SOURCES.length;
+        ({ platform, keyword } = ALL_SOURCES[idx]);
+        await kv.put('scan:nextSourceIdx', String((idx + 1) % ALL_SOURCES.length));
       }
 
-      console.log(`[EagleRadar] fire-only 啟動 keyword="${keyword}"`);
+      const platformLabel = platform === 'facebook' ? 'Facebook' : 'Threads';
+      console.log(`[EagleRadar] fire-only 啟動 platform=${platform} keyword="${keyword}"`);
 
       // Fire Apify run，立即回 runId（不等 actor 完成）
-      const runId = await fireEagleRadarApifyRun(apifyToken, keyword);
+      const runId = await fireEagleRadarApifyRun(apifyToken, keyword, platform);
 
       const pending: EagleRadarPendingRun = {
         runId,
         keyword,
         startedAt: new Date().toISOString(),
+        platform,
       };
       await kv.put(EAGLE_RADAR_PENDING_RUN_KEY, JSON.stringify(pending));
 
-      console.log(`[EagleRadar] 已啟動 runId=${runId}，keyword="${keyword}"，存 pending_run KV`);
+      console.log(`[EagleRadar] 已啟動 runId=${runId}，platform=${platform} keyword="${keyword}"，存 pending_run KV`);
 
       return {
         runId,
         keyword,
+        platform,
         status: 'started' as const,
-        message: `掃描已啟動（關鍵字：${keyword}），約 2-3 分鐘後請點「同步結果」`,
+        message: `掃描已啟動（${platformLabel}・關鍵字：${keyword}），約 2-3 分鐘後請點「同步結果」`,
       };
     }),
 
@@ -2388,7 +2480,7 @@ const eagleRadarRouter = router({
       }
 
       // 拉 dataset items
-      let items: ApifyThreadsItem[];
+      let items: (ApifyThreadsItem | ApifyFbItem)[];
       try {
         items = await fetchApifyDatasetItems(apifyToken, runStatus.defaultDatasetId);
       } catch (err) {
@@ -2402,12 +2494,16 @@ const eagleRadarRouter = router({
         };
       }
 
-      console.log(`[EagleRadar] syncResults keyword="${pending.keyword}" → ${items.length} 筆`);
+      const pendingPlatform = pending.platform ?? 'threads';  // 向後相容舊 pending 無 platform 欄位
+      console.log(`[EagleRadar] syncResults platform=${pendingPlatform} keyword="${pending.keyword}" → ${items.length} 筆`);
 
-      // 入庫（與舊版相同邏輯：dedup + ttl）
+      // 入庫（dedup + ttl + 30 天篩選已在 toEagleRadar*Post 處理）
       let newCount = 0;
       for (const item of items) {
-        const post = toEagleRadarPost(item, pending.keyword);
+        // [2026-05-04] 根據 platform 選轉換函數
+        const post = pendingPlatform === 'facebook'
+          ? toEagleRadarFbPost(item as ApifyFbItem, pending.keyword)
+          : toEagleRadarPost(item as ApifyThreadsItem, pending.keyword);
         if (!post) continue;
 
         const existingRaw = await kv.get(post.id);
@@ -2482,8 +2578,12 @@ const eagleRadarRouter = router({
             if (runStatus.status === 'SUCCEEDED' && runStatus.defaultDatasetId) {
               await kv.delete(EAGLE_RADAR_PENDING_RUN_KEY);
               const items = await fetchApifyDatasetItems(apifyToken, runStatus.defaultDatasetId);
+              const autoPlatform = pending.platform ?? 'threads';
               for (const item of items) {
-                const post = toEagleRadarPost(item, pending.keyword);
+                // [2026-05-04] 根據 platform 選轉換函數
+                const post = autoPlatform === 'facebook'
+                  ? toEagleRadarFbPost(item as ApifyFbItem, pending.keyword)
+                  : toEagleRadarPost(item as ApifyThreadsItem, pending.keyword);
                 if (!post) continue;
                 const existingRaw = await kv.get(post.id);
                 if (existingRaw) {
@@ -2512,10 +2612,15 @@ const eagleRadarRouter = router({
       }
 
       const targetStatus = input?.status ?? 'pending';
-      const listResult = await kv.list({ prefix: 'threads:', limit: 500 });
+      // [2026-05-04 擴充] 同時列出 threads: 和 facebook: 前綴
+      const [threadsListResult, fbListResult] = await Promise.all([
+        kv.list({ prefix: 'threads:', limit: 250 }),
+        kv.list({ prefix: 'facebook:', limit: 250 }),
+      ]);
+      const allKeys = [...threadsListResult.keys, ...fbListResult.keys];
       const posts: EagleRadarPost[] = [];
 
-      for (const key of listResult.keys) {
+      for (const key of allKeys) {
         const raw = await kv.get(key.name);
         if (!raw) continue;
         try {

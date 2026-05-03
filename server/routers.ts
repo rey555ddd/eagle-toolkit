@@ -340,7 +340,7 @@ ${input.originalText}
   eagleRadar: router({
     scanNow: publicProcedure
       .input(z.object({ keywords: z.array(z.string().min(1)).optional() }).optional())
-      .mutation(async () => {
+      .mutation(async (): Promise<{ runId: string | null; keyword: string | null; platform: 'threads' | 'facebook' | null; status: 'started' | 'budget_exceeded'; message: string }> => {
         throw new Error("賣家雷達僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
       }),
 
