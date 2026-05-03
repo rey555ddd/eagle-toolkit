@@ -2083,9 +2083,13 @@ const EAGLE_RADAR_DEFAULT_KEYWORDS = [
   '二手 名牌包',
 ] as const;
 
-const EAGLE_RADAR_APIFY_URL =
-  'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/run-sync-get-dataset-items';
-const EAGLE_RADAR_MAX_RESULTS_PER_KW = 10;  // CF Pages Functions 30s limit；Apify 10 筆約 8-15 秒安全範圍
+// [2026-05-04 異步架構] fire-and-poll：改用 /runs 端點立即取 runId，避免 CF Pages 100s wall-clock timeout
+const EAGLE_RADAR_APIFY_RUN_URL =
+  'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/runs';
+// 舊的同步端點保留作為常數備查（已不使用）
+// const EAGLE_RADAR_APIFY_URL =
+//   'https://api.apify.com/v2/acts/futurizerush~threads-keyword-search/run-sync-get-dataset-items';
+const EAGLE_RADAR_MAX_RESULTS_PER_KW = 10;  // Apify actor maxResults 參數
 const EAGLE_RADAR_DEFAULT_BUDGET_NTD = 3500;
 const EAGLE_RADAR_POST_TTL = 30 * 24 * 60 * 60;
 const EAGLE_RADAR_DEDUP_TTL = 24 * 60 * 60;
@@ -2124,11 +2128,12 @@ function eagleRadarContentFingerprint(content: string): string {
   return content.trim().slice(0, 50).replace(/\s+/g, ' ');
 }
 
-async function fetchEagleRadarThreadsKeyword(
+// [2026-05-04 異步架構] fire-only：POST /runs 立即取 runId，不等 actor 完成
+async function fireEagleRadarApifyRun(
   apifyToken: string,
   keyword: string,
-): Promise<ApifyThreadsItem[]> {
-  const url = `${EAGLE_RADAR_APIFY_URL}?token=${apifyToken}`;
+): Promise<string> {
+  const url = `${EAGLE_RADAR_APIFY_RUN_URL}?token=${apifyToken}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2140,11 +2145,59 @@ async function fetchEagleRadarThreadsKeyword(
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Apify API 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
+    throw new Error(`Apify /runs 啟動錯誤 (${res.status}): ${errText.slice(0, 200)}`);
   }
 
+  const data = await res.json() as { data?: { id?: string } };
+  const runId = data?.data?.id;
+  if (!runId) throw new Error('Apify /runs 未回傳 runId');
+  return runId;
+}
+
+// [2026-05-04 異步架構] 查詢 run 狀態
+interface ApifyRunStatus {
+  status: 'READY' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ABORTING' | 'ABORTED' | 'TIMED-OUT';
+  defaultDatasetId?: string;
+}
+
+async function getApifyRunStatus(
+  apifyToken: string,
+  runId: string,
+): Promise<ApifyRunStatus> {
+  const res = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apifyToken}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`查 run 狀態錯誤 (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json() as { data?: { status?: string; defaultDatasetId?: string } };
+  return {
+    status: (data?.data?.status ?? 'RUNNING') as ApifyRunStatus['status'],
+    defaultDatasetId: data?.data?.defaultDatasetId,
+  };
+}
+
+// [2026-05-04 異步架構] 從 dataset 拉 items
+async function fetchApifyDatasetItems(
+  apifyToken: string,
+  datasetId: string,
+): Promise<ApifyThreadsItem[]> {
+  const url = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}&clean=true&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`拉 dataset items 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
+  }
   const items = await res.json() as ApifyThreadsItem[];
   return Array.isArray(items) ? items : [];
+}
+
+// KV key for pending Apify run
+const EAGLE_RADAR_PENDING_RUN_KEY = 'radar:pending_run';
+
+interface EagleRadarPendingRun {
+  runId: string;
+  keyword: string;
+  startedAt: string;
 }
 
 function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPost | null {
@@ -2175,9 +2228,12 @@ function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPo
 
 const eagleRadarRouter = router({
   /**
-   * scanNow — 立即掃描 Threads（手動觸發或 Cron 呼叫）
-   * input:  { keywords?: string[] }（不指定就用預設 8 組）
-   * output: { scanned, newCount, costThisRun, costMonth, skippedBudget }
+   * scanNow — fire-only 異步掃描 Threads
+   * [2026-05-04 重構] 舊版同步等 actor 完成會 CF Pages 524 timeout（2-3 min > 100s limit）
+   * 新版：POST /runs → 立即取 runId → 存 KV radar:pending_run → 立即回傳
+   * 約 3 分鐘後呼叫 syncResults 才真正入庫
+   * input:  { keywords?: string[] }（不指定就用預設 8 組輪流）
+   * output: { runId, keyword, status: 'started', message }
    */
   scanNow: publicProcedure
     .input(
@@ -2205,101 +2261,194 @@ const eagleRadarRouter = router({
       if (costMonth >= budget) {
         console.warn(`[EagleRadar] 本月費用 NT$${costMonth} 已超過預算 NT$${budget}，停止掃描`);
         return {
-          scanned: 0,
-          newCount: 0,
-          costThisRun: 0,
-          costMonth,
-          skippedBudget: true,
-          warning: `本月費用 NT$${costMonth} 已達預算 NT$${budget}，請調整預算或等下個月`,
+          runId: null,
+          keyword: null,
+          status: 'budget_exceeded' as const,
+          message: `本月費用 NT$${costMonth} 已達預算 NT$${budget}，請調整預算或等下個月`,
         };
       }
 
-      // CF Pages Functions 30 秒 timeout：單次 scanNow 最多 1 個 keyword（Apify 同步模式 30 筆約需 15-25 秒）
-      // 不指定 → 用 KV scan:nextKwIdx 輪流跑預設清單第 N 個（cron 每 2hr 跑一次、8 keyword 16hr 全跑完一輪）
-      let keywords: string[];
+      // 決定這次掃的 keyword（一次只跑一個、輪流消化清單）
+      let keyword: string;
       if (input?.keywords?.length) {
-        keywords = input.keywords.slice(0, 1);
+        keyword = input.keywords[0];
       } else {
         const idxRaw = await kv.get('scan:nextKwIdx');
         const idx = Number.parseInt(idxRaw || '0', 10) % EAGLE_RADAR_DEFAULT_KEYWORDS.length;
-        keywords = [EAGLE_RADAR_DEFAULT_KEYWORDS[idx]];
+        keyword = EAGLE_RADAR_DEFAULT_KEYWORDS[idx];
         await kv.put('scan:nextKwIdx', String((idx + 1) % EAGLE_RADAR_DEFAULT_KEYWORDS.length));
       }
 
-      console.log(`[EagleRadar] 開始掃描 ${keywords.length} 組關鍵字: ${keywords.join(', ')}`);
+      console.log(`[EagleRadar] fire-only 啟動 keyword="${keyword}"`);
 
-      let totalScanned = 0;
-      let newCount = 0;
-      const errors: string[] = [];
+      // Fire Apify run，立即回 runId（不等 actor 完成）
+      const runId = await fireEagleRadarApifyRun(apifyToken, keyword);
 
-      for (const keyword of keywords) {
-        const currentCost = await getEagleRadarCostThisMonthRaw(kv);
-        if (currentCost >= budget) {
-          console.warn(`[EagleRadar] 掃到一半預算滿了（${currentCost} >= ${budget}），提前結束`);
-          break;
-        }
+      const pending: EagleRadarPendingRun = {
+        runId,
+        keyword,
+        startedAt: new Date().toISOString(),
+      };
+      await kv.put(EAGLE_RADAR_PENDING_RUN_KEY, JSON.stringify(pending));
 
-        try {
-          const items = await fetchEagleRadarThreadsKeyword(apifyToken, keyword);
-          console.log(`[EagleRadar] keyword="${keyword}" → ${items.length} 筆`);
-          totalScanned += items.length;
+      console.log(`[EagleRadar] 已啟動 runId=${runId}，keyword="${keyword}"，存 pending_run KV`);
 
-          for (const item of items) {
-            const post = toEagleRadarPost(item, keyword);
-            if (!post) continue;
+      return {
+        runId,
+        keyword,
+        status: 'started' as const,
+        message: `掃描已啟動（關鍵字：${keyword}），約 2-3 分鐘後請點「同步結果」`,
+      };
+    }),
 
-            const existingRaw = await kv.get(post.id);
-            if (existingRaw) {
-              const existing = JSON.parse(existingRaw) as EagleRadarPost;
-              const updated: EagleRadarPost = { ...post, status: existing.status };
-              await kv.put(post.id, JSON.stringify(updated), {
-                expirationTtl: EAGLE_RADAR_POST_TTL,
-              });
-              continue;
-            }
+  /**
+   * syncResults — 輪詢 Apify run 狀態，完成後拉 dataset 入庫 KV
+   * [2026-05-04 新增] fire-and-poll 架構第二步
+   * 呼叫時機：Abby 點「同步結果」按鈕；listPending 也會 best-effort 呼叫一次
+   * output: { status, newCount, scanned, startedAt, costThisRun, costMonth }
+   */
+  syncResults: publicProcedure
+    .mutation(async ({ ctx }) => {
+      const env = (ctx as unknown as { env: Env }).env;
+      const kv: KVNamespace | undefined = env?.EAGLE_RADAR_KV;
+      const apifyToken: string | undefined = env?.APIFY_API_TOKEN;
 
-            const dedupKey = `dedup:${post.author}:${eagleRadarContentFingerprint(post.content)}`;
-            const isDup = await kv.get(dedupKey);
-            if (isDup) {
-              console.log(`[EagleRadar] 去重命中 author=${post.author}`);
-              continue;
-            }
+      if (!kv) throw new Error('EAGLE_RADAR_KV 未綁定');
+      if (!apifyToken) throw new Error('APIFY_API_TOKEN 未設定');
 
-            await kv.put(post.id, JSON.stringify(post), {
-              expirationTtl: EAGLE_RADAR_POST_TTL,
-            });
-            await kv.put(dedupKey, '1', { expirationTtl: EAGLE_RADAR_DEDUP_TTL });
-            newCount++;
-          }
-        } catch (err) {
-          const msg = `keyword="${keyword}" 錯誤: ${String(err)}`;
-          console.error(`[EagleRadar] ${msg}`);
-          errors.push(msg);
-        }
+      // 讀 pending_run
+      const pendingRaw = await kv.get(EAGLE_RADAR_PENDING_RUN_KEY);
+      if (!pendingRaw) {
+        return { status: 'no_pending' as const, newCount: 0, scanned: 0 };
       }
 
-      const costThisRun = calcEagleRadarCostNTD(totalScanned);
+      let pending: EagleRadarPendingRun;
+      try {
+        pending = JSON.parse(pendingRaw) as EagleRadarPendingRun;
+      } catch {
+        await kv.delete(EAGLE_RADAR_PENDING_RUN_KEY);
+        return { status: 'no_pending' as const, newCount: 0, scanned: 0 };
+      }
+
+      // 查 Apify run 狀態
+      let runStatus: ApifyRunStatus;
+      try {
+        runStatus = await getApifyRunStatus(apifyToken, pending.runId);
+      } catch (err) {
+        console.error(`[EagleRadar] syncResults 查 run 狀態失敗: ${String(err)}`);
+        return {
+          status: 'check_failed' as const,
+          newCount: 0,
+          scanned: 0,
+          runId: pending.runId,
+          startedAt: pending.startedAt,
+          error: String(err),
+        };
+      }
+
+      console.log(`[EagleRadar] syncResults runId=${pending.runId} status=${runStatus.status}`);
+
+      if (runStatus.status === 'RUNNING' || runStatus.status === 'READY') {
+        return {
+          status: 'still_running' as const,
+          newCount: 0,
+          scanned: 0,
+          runId: pending.runId,
+          startedAt: pending.startedAt,
+        };
+      }
+
+      // 不論成功失敗都清掉 pending，避免卡死
+      await kv.delete(EAGLE_RADAR_PENDING_RUN_KEY);
+
+      if (runStatus.status !== 'SUCCEEDED') {
+        console.warn(`[EagleRadar] run ${pending.runId} 狀態=${runStatus.status}，非 SUCCEEDED，不入庫`);
+        return {
+          status: 'run_failed' as const,
+          newCount: 0,
+          scanned: 0,
+          runId: pending.runId,
+          runActorStatus: runStatus.status,
+        };
+      }
+
+      if (!runStatus.defaultDatasetId) {
+        return {
+          status: 'run_failed' as const,
+          newCount: 0,
+          scanned: 0,
+          runId: pending.runId,
+          runActorStatus: 'SUCCEEDED_NO_DATASET',
+        };
+      }
+
+      // 拉 dataset items
+      let items: ApifyThreadsItem[];
+      try {
+        items = await fetchApifyDatasetItems(apifyToken, runStatus.defaultDatasetId);
+      } catch (err) {
+        console.error(`[EagleRadar] syncResults 拉 dataset 失敗: ${String(err)}`);
+        return {
+          status: 'dataset_fetch_failed' as const,
+          newCount: 0,
+          scanned: 0,
+          runId: pending.runId,
+          error: String(err),
+        };
+      }
+
+      console.log(`[EagleRadar] syncResults keyword="${pending.keyword}" → ${items.length} 筆`);
+
+      // 入庫（與舊版相同邏輯：dedup + ttl）
+      let newCount = 0;
+      for (const item of items) {
+        const post = toEagleRadarPost(item, pending.keyword);
+        if (!post) continue;
+
+        const existingRaw = await kv.get(post.id);
+        if (existingRaw) {
+          // 更新但保留 status
+          const existing = JSON.parse(existingRaw) as EagleRadarPost;
+          const updated: EagleRadarPost = { ...post, status: existing.status };
+          await kv.put(post.id, JSON.stringify(updated), {
+            expirationTtl: EAGLE_RADAR_POST_TTL,
+          });
+          continue;
+        }
+
+        const dedupKey = `dedup:${post.author}:${eagleRadarContentFingerprint(post.content)}`;
+        const isDup = await kv.get(dedupKey);
+        if (isDup) {
+          console.log(`[EagleRadar] 去重命中 author=${post.author}`);
+          continue;
+        }
+
+        await kv.put(post.id, JSON.stringify(post), {
+          expirationTtl: EAGLE_RADAR_POST_TTL,
+        });
+        await kv.put(dedupKey, '1', { expirationTtl: EAGLE_RADAR_DEDUP_TTL });
+        newCount++;
+      }
+
+      const costThisRun = calcEagleRadarCostNTD(items.length);
       const newCostMonth = await accumulateEagleRadarCost(kv, costThisRun);
       await kv.put('scan:lastRun', new Date().toISOString());
 
-      if (newCostMonth >= budget) {
-        console.warn(`[EagleRadar] 掃描後費用 NT$${newCostMonth} 達預算 NT$${budget}`);
-      }
-
-      console.log(`[EagleRadar] 完成：scanned=${totalScanned}, new=${newCount}, cost=NT$${costThisRun}, 月累計=NT$${newCostMonth}`);
+      console.log(`[EagleRadar] syncResults 完成：scanned=${items.length}, new=${newCount}, cost=NT$${costThisRun}, 月累計=NT$${newCostMonth}`);
 
       return {
-        scanned: totalScanned,
+        status: 'synced' as const,
+        scanned: items.length,
         newCount,
         costThisRun,
         costMonth: newCostMonth,
-        skippedBudget: false,
-        errors: errors.length > 0 ? errors : undefined,
+        keyword: pending.keyword,
       };
     }),
 
   /**
    * listPending — 列出雷達清單
+   * [2026-05-04 改] 進入時 best-effort 觸發 syncResults，讓 Abby 重整頁面自動同步
    * input:  { status?: 'pending'|'contacted'|'matched'|'rejected'|'all' }
    * output: EagleRadarPost[]（按 scrapedAt 倒序，限 50 筆）
    */
@@ -2315,6 +2464,46 @@ const eagleRadarRouter = router({
 
       if (!kv) {
         throw new Error('EAGLE_RADAR_KV 未綁定');
+      }
+
+      // best-effort auto-sync：若有 pending_run，嘗試同步一次（不影響 list 結果）
+      const apifyToken: string | undefined = env?.APIFY_API_TOKEN;
+      if (apifyToken) {
+        try {
+          const pendingRaw = await kv.get(EAGLE_RADAR_PENDING_RUN_KEY);
+          if (pendingRaw) {
+            const pending = JSON.parse(pendingRaw) as EagleRadarPendingRun;
+            const runStatus = await getApifyRunStatus(apifyToken, pending.runId);
+            if (runStatus.status === 'SUCCEEDED' && runStatus.defaultDatasetId) {
+              await kv.delete(EAGLE_RADAR_PENDING_RUN_KEY);
+              const items = await fetchApifyDatasetItems(apifyToken, runStatus.defaultDatasetId);
+              for (const item of items) {
+                const post = toEagleRadarPost(item, pending.keyword);
+                if (!post) continue;
+                const existingRaw = await kv.get(post.id);
+                if (existingRaw) {
+                  const existing = JSON.parse(existingRaw) as EagleRadarPost;
+                  await kv.put(post.id, JSON.stringify({ ...post, status: existing.status }), { expirationTtl: EAGLE_RADAR_POST_TTL });
+                  continue;
+                }
+                const dedupKey = `dedup:${post.author}:${eagleRadarContentFingerprint(post.content)}`;
+                if (await kv.get(dedupKey)) continue;
+                await kv.put(post.id, JSON.stringify(post), { expirationTtl: EAGLE_RADAR_POST_TTL });
+                await kv.put(dedupKey, '1', { expirationTtl: EAGLE_RADAR_DEDUP_TTL });
+              }
+              const costThisRun = calcEagleRadarCostNTD(items.length);
+              await accumulateEagleRadarCost(kv, costThisRun);
+              await kv.put('scan:lastRun', new Date().toISOString());
+              console.log(`[EagleRadar] listPending auto-sync 完成 ${items.length} 筆`);
+            } else if (runStatus.status !== 'RUNNING' && runStatus.status !== 'READY') {
+              // 終態但非 SUCCEEDED，清掉 pending 避免卡死
+              await kv.delete(EAGLE_RADAR_PENDING_RUN_KEY);
+            }
+          }
+        } catch (autoSyncErr) {
+          // best-effort，失敗不影響 list
+          console.warn(`[EagleRadar] listPending auto-sync 失敗（吞掉）: ${String(autoSyncErr)}`);
+        }
       }
 
       const targetStatus = input?.status ?? 'pending';

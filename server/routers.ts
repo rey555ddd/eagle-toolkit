@@ -344,6 +344,12 @@ ${input.originalText}
         throw new Error("賣家雷達僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
       }),
 
+    // [2026-05-04 新增] fire-and-poll 第二步
+    syncResults: publicProcedure
+      .mutation(async () => {
+        throw new Error("賣家雷達僅在 production（Cloudflare Pages）環境執行，dev mode 不支援。");
+      }),
+
     listPending: publicProcedure
       .input(
         z.object({
