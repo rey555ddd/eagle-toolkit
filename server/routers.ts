@@ -76,61 +76,8 @@ async function callGeminiText(systemPrompt: string, userPrompt: string): Promise
   return result.response.text();
 }
 
-
-// ─── 庫存盤點 router（Day 3.1 蕭何正式版上線前的型別 stub）─────────────────────
-// 功能已在前端實作完畢，等蕭何完成後端後直接接通
-const inventoryRouter = router({
-  list: publicProcedure
-    .input(
-      z.object({
-        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear']).optional(),
-        brand: z.string().optional(),
-        limit: z.number().min(1).max(200).default(50),
-        offset: z.number().min(0).default(0),
-      }).optional()
-    )
-    .query(async () => {
-      throw new Error('inventory.list 尚未實作，等蕭何 Day 3.1 完成後端');
-    }),
-
-  updateStatus: publicProcedure
-    .input(
-      z.object({
-        inventoryId: z.string().min(1),
-        status: z.enum(['in_store', 'sold', 'consigned', 'pending_clear']),
-        soldPriceNT: z.number().positive().optional(),
-        soldAt: z.string().optional(),
-        location: z.string().max(200).optional(),
-        notes: z.string().max(1000).optional(),
-      })
-    )
-    .mutation(async () => {
-      throw new Error('inventory.updateStatus 尚未實作，等蕭何 Day 3.1 完成後端');
-    }),
-
-  addToModelDb: publicProcedure
-    .input(
-      z.object({
-        brand: z.string().min(1).max(100),
-        serial: z.string().max(100).optional(),
-        productName: z.string().min(1).max(300),
-        photoUrl: z.string().url().optional(),
-        notes: z.string().max(1000).optional(),
-      })
-    )
-    .mutation(async () => {
-      throw new Error('inventory.addToModelDb 尚未實作，等蕭何 Day 3.1 完成後端');
-    }),
-
-  getStats: publicProcedure
-    .query(async () => {
-      throw new Error('inventory.getStats 尚未實作，等蕭何 Day 3.1 完成後端');
-    }),
-});
-
 export const appRouter = router({
   system: systemRouter,
-  inventory: inventoryRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -459,7 +406,7 @@ ${input.originalText}
       .input(
         z.object({
           brand: z.string().min(1),
-          serial: z.string().min(1),
+          serial: z.string().optional().nullable(),
           productName: z.string().min(1),
           photoUrl: z.string().optional().nullable(),
           notes: z.string().max(500).optional().nullable(),

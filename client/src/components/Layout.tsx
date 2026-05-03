@@ -8,18 +8,19 @@
  */
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
-import { Menu, X, Lock } from "lucide-react";
+import { Menu, X, Lock, Package } from "lucide-react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg";
 
 const navItems = [
-  { href: "/", label: "首頁", special: false, locked: false },
-  { href: "/video", label: "影片生成器", special: false, locked: false },
-  { href: "/copy", label: "文案生成器", special: false, locked: false },
-  { href: "/image", label: "圖片處理器", special: false, locked: false },
-  { href: "/purchase", label: "採購助手", special: false, locked: true },
-  { href: "/radar", label: "賣家雷達", special: true, badge: "Abby 專用", locked: true },
-  { href: "/feedback", label: "修改建議", special: true, locked: false },
+  { href: "/", label: "首頁", special: false, locked: false, icon: null },
+  { href: "/video", label: "影片生成器", special: false, locked: false, icon: null },
+  { href: "/copy", label: "文案生成器", special: false, locked: false, icon: null },
+  { href: "/image", label: "圖片處理器", special: false, locked: false, icon: null },
+  { href: "/purchase", label: "採購助手", special: false, locked: true, icon: null },
+  { href: "/stock", label: "庫存盤點", special: false, locked: true, icon: Package },
+  { href: "/radar", label: "賣家雷達", special: true, badge: "Abby 專用", locked: true, icon: null },
+  { href: "/feedback", label: "修改建議", special: true, locked: false, icon: null },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
