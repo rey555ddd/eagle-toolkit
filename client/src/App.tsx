@@ -12,6 +12,7 @@ import FeedbackBoard from "./pages/FeedbackBoard";
 import Radar from "./pages/Radar";
 import PurchasePage from "./pages/PurchasePage";
 import StockPage from "./pages/StockPage";
+import DashboardPage from "./pages/DashboardPage";
 import Layout from "./components/Layout";
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/radar" component={Radar} />
       <Route path="/purchase" component={PurchasePage} />
       <Route path="/stock" component={StockPage} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

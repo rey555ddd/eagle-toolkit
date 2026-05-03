@@ -8,7 +8,7 @@
  */
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
-import { Menu, X, Lock, Package } from "lucide-react";
+import { Menu, X, Lock, Package, BarChart3 } from "lucide-react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg";
 
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/image", label: "圖片處理器", special: false, locked: false, icon: null },
   { href: "/purchase", label: "採購助手", special: false, locked: true, icon: null },
   { href: "/stock", label: "庫存盤點", special: false, locked: true, icon: Package },
+  { href: "/dashboard", label: "數據儀表板", special: false, locked: true, icon: BarChart3 },
   { href: "/radar", label: "賣家雷達", special: true, badge: "Abby 專用", locked: true, icon: null },
   { href: "/feedback", label: "修改建議", special: true, locked: false, icon: null },
 ];
