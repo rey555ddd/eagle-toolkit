@@ -2211,7 +2211,12 @@ function toEagleRadarPost(item: ApifyThreadsItem, keyword: string): EagleRadarPo
 
   const postUrl = item.postUrl || item.url || `https://www.threads.com/p/${rawId}`;
   const scrapedAt = new Date().toISOString();
-  const threadsId = rawId.replace(/^https?:\/\/.*\/post\//, '').replace(/^https?:\/\/.*\/p\//, '').replace(/\/$/, '');
+  const threadsId = rawId
+    .replace(/^https?:\/\/.*\/post\//, '')
+    .replace(/^https?:\/\/.*\/p\//, '')
+    .replace(/[?#].*$/, '')  // 去掉 query string / fragment（防 KV key > 512 bytes）
+    .replace(/\/$/, '')
+    .slice(0, 100);  // 安全截斷（CF KV key limit 512，'threads:' 前綴 8 bytes）
 
   return {
     id: `threads:${threadsId}`,
