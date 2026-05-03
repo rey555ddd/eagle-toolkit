@@ -1583,7 +1583,11 @@ interface PurchaseRecognizeResult {
   serial: string | null;
   features: string[];
   confidence: number;
-  productName: string;       // AI 直接生成（不含開頭編號）、對齊蹦闆 Excel 真實命名 pattern
+  productName: string;       // 最終 productName（KV 命中時覆蓋 AI 結果）
+  aiProductName: string;     // AI 原始辨識結果（kvHit 時保留對比用）
+  kvHit: boolean;            // 是否命中 EAGLE_MODELS_KV
+  verifiedTimes: number | null;  // KV 中的已驗證次數（kvHit 時填入）
+  kvProductName: string | null;  // KV 中的標準品名（kvHit 時填入）
   formattedName: string;     // 含編號的完整字串（{seq}.{productName}）
   costLog: string;
   price: number | null;
@@ -1744,6 +1748,10 @@ async function recognizeOnePurchaseImage(
         features: [],
         confidence: 0,
         productName: '辨識失敗',
+        aiProductName: '辨識失敗',
+        kvHit: false,
+        verifiedTimes: null,
+        kvProductName: null,
         formattedName: `${imageIndex + 1}.辨識失敗`,
         costLog,
         price: null,
@@ -1785,7 +1793,13 @@ async function recognizeOnePurchaseImage(
     );
 
     console.log(costLog);
-    return { imageIndex, brand, material, model, color, size, serial, features, confidence, productName, formattedName, costLog, price: null, quantity: 1 };
+    // 預設帶上 KV 欄位（後續在 batchRecognize 裡會補齊）
+    return {
+      imageIndex, brand, material, model, color, size, serial, features, confidence,
+      productName, aiProductName: productName,
+      kvHit: false, verifiedTimes: null, kvProductName: null,
+      formattedName, costLog, price: null, quantity: 1,
+    };
 
   } catch (err) {
     console.error(`[Purchase] 解析錯誤 image[${imageIndex}]:`, err, 'rawJson:', rawJson.slice(0, 300));
@@ -1800,10 +1814,14 @@ async function recognizeOnePurchaseImage(
       features: [],
       confidence: 0,
       productName: '解析錯誤',
+      aiProductName: '解析錯誤',
+      kvHit: false,
+      verifiedTimes: null,
+      kvProductName: null,
       formattedName: `${imageIndex + 1}.解析錯誤`,
       costLog,
       price: null,
-        quantity: 1,
+      quantity: 1,
       error: String(err),
     };
   }
@@ -1825,10 +1843,12 @@ const purchaseRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const anthropicKey = (ctx as unknown as { env: Env }).env?.ANTHROPIC_API_KEY;
+      const env = (ctx as unknown as { env: Env }).env;
+      const anthropicKey = env?.ANTHROPIC_API_KEY;
       if (!anthropicKey) {
         throw new Error('ANTHROPIC_API_KEY 未設定，請在 Cloudflare Pages 後台環境變數中配置');
       }
+      const modelsKv: KVNamespace | undefined = env?.EAGLE_MODELS_KV;
 
       const { images } = input;
       console.log(`[Purchase] 開始辨識 ${images.length} 張照片`);
@@ -1849,6 +1869,49 @@ const purchaseRouter = router({
         });
 
         console.log(`[Purchase] 批次 ${batchStart + 1}-${batchEnd} 完成`);
+      }
+
+      // ─── KV 前置查：對每筆有 serial 的結果查 EAGLE_MODELS_KV ─────────────────
+      // 命中時用 KV.productName 覆蓋 AI 輸出，並填入 kvHit / verifiedTimes / kvProductName
+      if (modelsKv) {
+        await Promise.all(
+          allResults.map(async (r, idx) => {
+            if (!r.serial || r.brand === '辨識失敗' || r.brand === '解析錯誤') return;
+            const brandUpper = r.brand.toUpperCase();
+            const kvKey = `bbang:model:${brandUpper}:${r.serial}`;
+            try {
+              const raw = await modelsKv.get(kvKey);
+              if (raw) {
+                const kv = JSON.parse(raw) as {
+                  productName?: string;
+                  verifiedTimes?: number;
+                  brand?: string;
+                  serial?: string;
+                };
+                const kvProductName = kv.productName ?? null;
+                const verifiedTimes = kv.verifiedTimes ?? null;
+                if (kvProductName) {
+                  // 用 KV 標準名覆蓋，保留 AI 結果
+                  allResults[idx] = {
+                    ...r,
+                    aiProductName: r.productName,
+                    productName: kvProductName,
+                    kvHit: true,
+                    verifiedTimes,
+                    kvProductName,
+                    // 重算 formattedName（用新 productName）
+                    formattedName: `${r.imageIndex + 1}.${kvProductName}`,
+                  };
+                  console.log(`[Purchase] KV 命中 ${kvKey} → ${kvProductName} (verifiedTimes=${verifiedTimes})`);
+                }
+              } else {
+                console.log(`[Purchase] KV 未命中 ${kvKey}`);
+              }
+            } catch (kvErr) {
+              console.error(`[Purchase] KV 查詢失敗 ${kvKey}:`, kvErr);
+            }
+          }),
+        );
       }
 
       const totalCostNTD = allResults.reduce((sum, r) => {
@@ -1885,6 +1948,7 @@ const purchaseRouter = router({
               quantity: z.number().int().positive().default(1),
               confidence: z.number().min(0).max(1).optional(),
               thumbnailUrl: z.string().optional().nullable(),
+              kvHit: z.boolean().optional().default(false),  // KV 命中時觸發 verifiedTimes +1
             }),
           )
           .min(1, '至少要有 1 件商品'),
@@ -1894,6 +1958,7 @@ const purchaseRouter = router({
       const env = (ctx as unknown as { env: Env }).env;
       const db: D1Database | undefined = env?.EAGLE_D1 ?? env?.DB;
       if (!db) throw new Error('EAGLE_D1 binding 未設定，請在 CF Dashboard 設定 D1 database');
+      const modelsKv: KVNamespace | undefined = env?.EAGLE_MODELS_KV;
 
       const batchId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -1943,6 +2008,33 @@ const purchaseRouter = router({
           )
           .bind(invId, itemId, now)
           .run();
+
+        // 3. KV 命中時 verifiedTimes +1 雙寫（D1 + KV 同步）
+        if (item.kvHit && item.serial && modelsKv) {
+          const brandUpper = item.brand.toUpperCase();
+          const kvKey = `bbang:model:${brandUpper}:${item.serial}`;
+          try {
+            // D1 +1
+            await db
+              .prepare(
+                `UPDATE bbang_models SET verifiedTimes = verifiedTimes + 1 WHERE brand = ? AND serial = ?`,
+              )
+              .bind(brandUpper, item.serial)
+              .run();
+
+            // KV 雙寫：讀取現有值再更新 verifiedTimes
+            const raw = await modelsKv.get(kvKey);
+            if (raw) {
+              const existing = JSON.parse(raw) as Record<string, unknown>;
+              const newTimes = ((existing.verifiedTimes as number) ?? 0) + 1;
+              await modelsKv.put(kvKey, JSON.stringify({ ...existing, verifiedTimes: newTimes }));
+              console.log(`[saveBatch] KV verifiedTimes +1 → ${newTimes} (${kvKey})`);
+            }
+          } catch (kvErr) {
+            // 非致命錯誤：D1 主寫入已成功，KV 更新失敗只記 log
+            console.error(`[saveBatch] verifiedTimes 更新失敗 ${kvKey}:`, kvErr);
+          }
+        }
       }
 
       return { batchId, itemCount, totalAmountNT };
@@ -2493,9 +2585,19 @@ const inventoryRouter = router({
 
       const isNew = (result.meta.changes ?? 0) > 0 && !result.meta.last_row_id;
 
-      // KV 雙寫（快速查找用）
+      // KV 雙寫（快速查找用，含 verifiedTimes 供 recognize 前置查使用）
       if (kv) {
         const kvKey = `bbang:model:${brandUpper}:${input.serial}`;
+        // 讀 D1 取最新 verifiedTimes
+        let verifiedTimes = 1;
+        try {
+          const row = await db
+            .prepare(`SELECT verifiedTimes FROM bbang_models WHERE brand = ? AND serial = ? LIMIT 1`)
+            .bind(brandUpper, input.serial)
+            .first<{ verifiedTimes: number }>();
+          if (row) verifiedTimes = row.verifiedTimes ?? 1;
+        } catch { /* 讀取失敗不影響主流程，保留預設 1 */ }
+
         const kvValue = JSON.stringify({
           productName: input.productName,
           brand: brandUpper,
@@ -2504,6 +2606,7 @@ const inventoryRouter = router({
           addedBy: 'Abby',
           addedAt: now,
           notes: input.notes ?? null,
+          verifiedTimes,
         });
         await kv.put(kvKey, kvValue);
       }
