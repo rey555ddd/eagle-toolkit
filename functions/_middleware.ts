@@ -39,7 +39,12 @@ const SENSITIVE_PATHS = [
 // ── Abby 專區：受密碼守門的 tRPC procedure 前綴 ──
 // tRPC path 格式：/api/trpc/purchase.xxx 或 /api/trpc/eagleRadar.xxx
 // （batch request 也可能是 /api/trpc/purchase.xxx,eagleRadar.xxx）
-const ABBY_PROTECTED_PREFIXES = ['purchase.', 'eagleRadar.'];
+const ABBY_PROTECTED_PREFIXES = [
+  'purchase.',
+  'eagleRadar.',
+  'inventory.',  // Day 3 新增：庫存管理
+  'migrate.',    // Day 3 新增：建表（也要守門、防止外部呼叫）
+];
 
 function isAbbyProtectedPath(pathname: string): boolean {
   // 取出 tRPC path 部分（/api/trpc/{trpcPath}）
