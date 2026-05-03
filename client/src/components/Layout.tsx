@@ -7,27 +7,39 @@
  * 原因：FM 的 AnimatePresence 包住 children，initial={{ opacity: 0 }} 不觸發 = 全站空白
  */
 import { Link, useLocation } from "wouter";
-import { useState, useEffect } from "react";
-import { Menu, X, Lock, Package, BarChart3 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Menu, X, Lock, Package, BarChart3, ShoppingBag, Radar, ChevronDown } from "lucide-react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg";
 
-const navItems = [
-  { href: "/", label: "首頁", special: false, locked: false, icon: null },
-  { href: "/video", label: "影片生成器", special: false, locked: false, icon: null },
-  { href: "/copy", label: "文案生成器", special: false, locked: false, icon: null },
-  { href: "/image", label: "圖片處理器", special: false, locked: false, icon: null },
-  { href: "/purchase", label: "採購助手", special: false, locked: true, icon: null },
-  { href: "/stock", label: "庫存盤點", special: false, locked: true, icon: Package },
-  { href: "/dashboard", label: "數據儀表板", special: false, locked: true, icon: BarChart3 },
-  { href: "/radar", label: "賣家雷達", special: true, badge: "Abby 專用", locked: true, icon: null },
-  { href: "/feedback", label: "修改建議", special: true, locked: false, icon: null },
+// 一般工具（公開）
+const publicNavItems = [
+  { href: "/", label: "首頁" },
+  { href: "/video", label: "影片生成器" },
+  { href: "/copy", label: "文案生成器" },
+  { href: "/image", label: "圖片處理器" },
+];
+
+// 店長專屬（Abby888 鎖、合併 4 件成一個下拉）
+const storeManagerItems: { href: string; label: string; icon: React.ComponentType<{ size?: number }> | null }[] = [
+  { href: "/purchase", label: "採購助手", icon: ShoppingBag },
+  { href: "/stock", label: "庫存盤點", icon: Package },
+  { href: "/radar", label: "賣家雷達", icon: Radar },
+  { href: "/dashboard", label: "數據儀表板", icon: BarChart3 },
+];
+
+// 特殊（修改建議）
+const specialNavItems = [
+  { href: "/feedback", label: "修改建議" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [storeMenuOpen, setStoreMenuOpen] = useState(false);
+  const [mobileStoreOpen, setMobileStoreOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const storeMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -37,7 +49,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setMobileOpen(false);
+    setStoreMenuOpen(false);
   }, [location]);
+
+  // click outside 關閉店長選單
+  useEffect(() => {
+    if (!storeMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (storeMenuRef.current && !storeMenuRef.current.contains(e.target as Node)) {
+        setStoreMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [storeMenuOpen]);
+
+  const isStoreActive = storeManagerItems.some((it) => it.href === location);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -65,45 +92,89 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-8">
-              {navItems.map((item) => (
-                item.special ? (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="text-sm tracking-[0.1em] transition-all duration-300 relative py-1 px-3 rounded-full inline-flex items-center gap-1.5"
+              {/* 公開工具 */}
+              {publicNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`text-sm tracking-[0.1em] transition-all duration-300 relative py-1 inline-flex items-center gap-1 ${
+                    location === item.href
+                      ? "text-[oklch(0.72_0.08_75)]"
+                      : "text-[oklch(0.7_0.01_80)] hover:text-[oklch(0.72_0.08_75)]"
+                  }`}
+                >
+                  {item.label}
+                  {location === item.href && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[oklch(0.72_0.08_75)] animate-fade-in" />
+                  )}
+                </Link>
+              ))}
+
+              {/* 店長專屬下拉 */}
+              <div className="relative" ref={storeMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setStoreMenuOpen((v) => !v)}
+                  className={`text-sm tracking-[0.1em] transition-all duration-300 relative py-1 inline-flex items-center gap-1.5 ${
+                    isStoreActive
+                      ? "text-[oklch(0.72_0.08_75)]"
+                      : "text-[oklch(0.7_0.01_80)] hover:text-[oklch(0.72_0.08_75)]"
+                  }`}
+                >
+                  <Lock size={10} className="opacity-50" />
+                  店長專屬
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${storeMenuOpen ? "rotate-180" : ""}`} />
+                  {isStoreActive && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[oklch(0.72_0.08_75)] animate-fade-in" />
+                  )}
+                </button>
+                {storeMenuOpen && (
+                  <div
+                    className="absolute right-0 mt-3 w-52 rounded-md overflow-hidden shadow-2xl animate-fade-in"
                     style={{
-                      color: location === item.href ? "#c7d2fe" : "#818cf8",
-                      background: location === item.href ? "rgba(99,102,241,0.2)" : "rgba(99,102,241,0.08)",
-                      border: "1px solid rgba(129,140,248,0.3)",
+                      background: "oklch(0.12 0.005 60 / 98%)",
+                      backdropFilter: "blur(12px)",
+                      border: "1px solid oklch(0.72 0.08 75 / 25%)",
                     }}
                   >
-                    {item.label}
-                    {item.badge && (
-                      <span
-                        className="text-[9px] px-1.5 py-0.5 rounded-full font-medium tracking-wide"
-                        style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                ) : (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`text-sm tracking-[0.1em] transition-all duration-300 relative py-1 inline-flex items-center gap-1 ${
-                      location === item.href
-                        ? "text-[oklch(0.72_0.08_75)]"
-                        : "text-[oklch(0.7_0.01_80)] hover:text-[oklch(0.72_0.08_75)]"
-                    }`}
-                  >
-                    {item.locked && <Lock size={10} className="opacity-50" />}
-                    {item.label}
-                    {location === item.href && (
-                      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[oklch(0.72_0.08_75)] animate-fade-in" />
-                    )}
-                  </Link>
-                )
+                    <div className="px-4 py-2 text-[10px] tracking-[0.2em] uppercase border-b" style={{ color: "oklch(0.55 0.04 75)", borderColor: "oklch(0.72 0.08 75 / 15%)" }}>
+                      Abby 專用
+                    </div>
+                    {storeManagerItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`flex items-center gap-2.5 px-4 py-2.5 text-sm tracking-[0.05em] transition-colors duration-200 ${
+                            location === item.href
+                              ? "text-[oklch(0.85_0.06_75)] bg-[oklch(0.72_0.08_75/12%)]"
+                              : "text-[oklch(0.75_0.01_80)] hover:text-[oklch(0.85_0.06_75)] hover:bg-[oklch(0.72_0.08_75/8%)]"
+                          }`}
+                        >
+                          {Icon && <Icon size={14} />}
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 修改建議（特殊樣式） */}
+              {specialNavItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="text-sm tracking-[0.1em] transition-all duration-300 relative py-1 px-3 rounded-full inline-flex items-center gap-1.5"
+                  style={{
+                    color: location === item.href ? "#c7d2fe" : "#818cf8",
+                    background: location === item.href ? "rgba(99,102,241,0.2)" : "rgba(99,102,241,0.08)",
+                    border: "1px solid rgba(129,140,248,0.3)",
+                  }}
+                >
+                  {item.label}
+                </Link>
               ))}
             </div>
 
@@ -127,25 +198,65 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           }`}
         >
           <div className="px-6 py-6 space-y-1">
-            {navItems.map((item) => (
-              <div key={item.href}>
-                <Link
-                  href={item.href}
-                  className="block py-3 text-sm tracking-[0.1em] transition-colors duration-300 flex items-center gap-2"
-                  style={item.special ? {
-                    color: location === item.href ? "#c7d2fe" : "#818cf8",
-                  } : {
-                    color: location === item.href ? "oklch(0.72 0.08 75)" : "oklch(0.7 0.01 80)",
-                  }}
-                >
-                  <span>{item.label}</span>
-                  {item.badge && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}>
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
+            {/* 公開工具 */}
+            {publicNavItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block py-3 text-sm tracking-[0.1em] transition-colors duration-300"
+                style={{ color: location === item.href ? "oklch(0.72 0.08 75)" : "oklch(0.7 0.01 80)" }}
+              >
+                {item.label}
+              </Link>
+            ))}
+
+            {/* 店長專屬展開區 */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setMobileStoreOpen((v) => !v)}
+                className="flex items-center justify-between w-full py-3 text-sm tracking-[0.1em] transition-colors duration-300"
+                style={{ color: isStoreActive ? "oklch(0.72 0.08 75)" : "oklch(0.7 0.01 80)" }}
+              >
+                <span className="flex items-center gap-2">
+                  <Lock size={11} className="opacity-50" />
+                  店長專屬
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}>
+                    Abby 專用
+                  </span>
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${mobileStoreOpen ? "rotate-180" : ""}`} />
+              </button>
+              <div className={`overflow-hidden transition-all duration-300 ${mobileStoreOpen ? "max-h-64 opacity-100" : "max-h-0 opacity-0"}`}>
+                <div className="pl-5 pb-2 space-y-0.5 border-l ml-1" style={{ borderColor: "oklch(0.72 0.08 75 / 20%)" }}>
+                  {storeManagerItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="flex items-center gap-2 py-2.5 px-3 text-sm tracking-[0.05em] transition-colors duration-200"
+                        style={{ color: location === item.href ? "oklch(0.85 0.06 75)" : "oklch(0.65 0.01 80)" }}
+                      >
+                        {Icon && <Icon size={13} />}
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
+            </div>
+
+            {/* 修改建議 */}
+            {specialNavItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block py-3 text-sm tracking-[0.1em] transition-colors duration-300"
+                style={{ color: location === item.href ? "#c7d2fe" : "#818cf8" }}
+              >
+                {item.label}
+              </Link>
             ))}
           </div>
         </div>
