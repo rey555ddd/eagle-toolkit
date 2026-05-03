@@ -9,7 +9,6 @@ import VideoMaker from "./pages/VideoMaker";
 import CopyWriter from "./pages/CopyWriter";
 import ImageEditor from "./pages/ImageEditor";
 import FeedbackBoard from "./pages/FeedbackBoard";
-import Radar from "./pages/Radar";
 import EagleRadarPage from "./pages/EagleRadarPage";
 import PurchasePage from "./pages/PurchasePage";
 import StockPage from "./pages/StockPage";
@@ -23,8 +22,7 @@ function Router() {
       <Route path="/copy" component={CopyWriter} />
       <Route path="/image" component={ImageEditor} />
       <Route path="/feedback" component={FeedbackBoard} />
-      <Route path="/radar" component={Radar} />
-      <Route path="/eagle-radar" component={EagleRadarPage} />
+      <Route path="/radar" component={EagleRadarPage} />
       <Route path="/purchase" component={PurchasePage} />
       <Route path="/stock" component={StockPage} />
       <Route path="/dashboard" component={DashboardPage} />
