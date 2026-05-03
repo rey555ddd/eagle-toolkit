@@ -600,18 +600,25 @@ function StockDashboard({ onLogout }: { onLogout: () => void }) {
   const [brandFilter, setBrandFilter] = useState<Brand>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(0)
-  const [items, setItems] = useState<InventoryItem[]>(MOCK_ITEMS)
-  // isMockData: 蕭何 inventory API 上線後將此設為 false，並啟用 inventoryListQuery.enabled
-  const isMockData = true
+  const [items, setItems] = useState<InventoryItem[]>([])
+  // 蕭何 Day 3.1 已上線、切真 API（韓信 2026-05-04）
+  const isMockData = false
 
-  // 嘗試用 tRPC 取資料（蕭何 inventory router 上線後改 enabled: true）
+  // tRPC inventory.list（蕭何 router 已 ready）
   const inventoryListQuery = trpc.inventory.list.useQuery(
     { status: statusFilter === 'all' ? undefined : statusFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
     {
-      enabled: false, // 等蕭何上線再改為 true
+      enabled: true,
       retry: false,
     }
   )
+
+  // sync query.data → items state
+  useEffect(() => {
+    if (inventoryListQuery.data?.items) {
+      setItems(inventoryListQuery.data.items as InventoryItem[])
+    }
+  }, [inventoryListQuery.data])
 
   const updateStatusMutation = trpc.inventory.updateStatus.useMutation()
   const addToModelDbMutation = trpc.inventory.addToModelDb.useMutation()
