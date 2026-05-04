@@ -33,11 +33,17 @@ type EaglePost = {
 };
 
 export default function EagleRadarPage() {
-  return (
-    <LoginGate>
-      <EagleRadarContent />
-    </LoginGate>
-  );
+  const [authed, setAuthed] = useState(false);
+  if (!authed) {
+    return (
+      <LoginGate
+        title="賣家雷達"
+        subtitle="蹦闆精品 · Abby 專用"
+        onLogin={() => setAuthed(true)}
+      />
+    );
+  }
+  return <EagleRadarContent />;
 }
 
 function EagleRadarContent() {
