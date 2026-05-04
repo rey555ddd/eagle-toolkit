@@ -692,6 +692,7 @@ interface Env {
   // ── 採購庫存（Day 3 新增）────────────────────────────────────────────
   EAGLE_D1?: D1Database;          // 採購 / 庫存 D1（獨立 binding，指向 eagle-toolkit-db）
   EAGLE_MODELS_KV?: KVNamespace; // 蹦闆型號資料庫 KV（bbang:model:{brand}:{serial}）
+  FAL_KEY?: string;           // fal.ai 去背用
 }
 
 interface Context {
@@ -916,13 +917,69 @@ async function generateWithGeminiFallback(
   throw lastError;
 }
 
+// ─── fal.ai 去背 → 生成 GPT Image 2 mask ────────────────────────────────────
+
+/** 把 base64 圖片上傳到 fal storage，取得公開 URL */
+async function uploadToFalStorage(imageBase64: string, mimeType: string, falKey: string): Promise<string> {
+  const binary = atob(imageBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType });
+
+  const form = new FormData();
+  form.append('file', blob, 'product.png');
+
+  const res = await fetch('https://storage.fal.ai/upload', {
+    method: 'POST',
+    headers: { Authorization: `Key ${falKey}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`fal storage upload 失敗 (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const json = await res.json() as { url: string };
+  return json.url;
+}
+
+/** 用 fal.ai rembg 去背，回傳去背後 PNG 的 base64（背景=透明，產品=不透明） */
+async function removeBackgroundForMask(imageBase64: string, mimeType: string, falKey: string): Promise<string> {
+  const imageUrl = await uploadToFalStorage(imageBase64, mimeType, falKey);
+
+  const res = await fetch('https://fal.run/fal-ai/imageutils/rembg', {
+    method: 'POST',
+    headers: {
+      Authorization: `Key ${falKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ image_url: imageUrl }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`fal.ai 去背失敗 (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const json = await res.json() as { image: { url: string } };
+  const maskUrl = json.image?.url;
+  if (!maskUrl) throw new Error('fal.ai 去背回傳格式異常');
+
+  // 下載去背後的 PNG（這就是 mask）
+  const imgRes = await fetch(maskUrl);
+  if (!imgRes.ok) throw new Error(`無法下載 mask 圖片 (${imgRes.status})`);
+  const arrayBuffer = await imgRes.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+  let binary2 = '';
+  for (let i = 0; i < uint8.length; i++) binary2 += String.fromCharCode(uint8[i]);
+  return btoa(binary2);
+}
+
 // ─── GPT Image 2 精修（OpenAI images.edit）─────────────────────────────────
 // 單一模式：原商品圖 + 場景 Prompt → 保留商品與所有文字，替換背景
 async function refineWithGptImage(
   env: Env,
   prompt: string,
   imageBase64: string,
-  mimeType: string
+  mimeType: string,
+  maskBase64?: string
 ): Promise<string> {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY 未設定，請至 Cloudflare Pages 環境變數配置');
@@ -936,11 +993,18 @@ async function refineWithGptImage(
 
   const form = new FormData();
   form.append('model', model);
-  form.append('image', blob, mimeType === 'image/png' ? 'product.png' : 'product.jpg');
+  form.append('image', blob, 'product.png');
   form.append('prompt', prompt);
   form.append('n', '1');
   form.append('size', '1024x1024');
   form.append('quality', 'high');
+  if (maskBase64) {
+    const maskBin = atob(maskBase64);
+    const maskBytes = new Uint8Array(maskBin.length);
+    for (let i = 0; i < maskBin.length; i++) maskBytes[i] = maskBin.charCodeAt(i);
+    const maskBlob = new Blob([maskBytes], { type: 'image/png' });
+    form.append('mask', maskBlob, 'mask.png');
+  }
 
   const res = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
@@ -3301,17 +3365,32 @@ ${input.originalText}
           'Ultra-high quality commercial product photography, sharp focus on the product, photorealistic.',
         ].join(' ');
 
+        // 嘗試用 fal.ai 去背生成 mask（鎖住產品本體，只換背景）
+        let maskBase64: string | undefined;
+        if (ctx.env.FAL_KEY) {
+          try {
+            maskBase64 = await removeBackgroundForMask(input.imageBase64, input.mimeType, ctx.env.FAL_KEY);
+          } catch (e) {
+            // 去背失敗不中斷，fallback 到無 mask 模式
+            console.error('[ImageEditor] fal.ai 去背失敗，改用無 mask 模式:', e);
+          }
+        }
+
         const imageBase64 = await refineWithGptImage(
           ctx.env,
           prompt,
           input.imageBase64,
-          input.mimeType
+          input.mimeType,
+          maskBase64
         );
 
         return {
           imageBase64,
           preset: input.preset,
-          message: '✨ GPT Image 2 精修完成，商品文字 100% 保留',
+          message: maskBase64
+            ? '精修完成，已鎖定產品本體（去背 mask 模式）'
+            : 'GPT Image 2 精修完成，商品文字 100% 保留',
+          usedMask: !!maskBase64,
         };
       }),
   }),

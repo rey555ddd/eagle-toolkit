@@ -56,17 +56,31 @@ export default function ImageEditor() {
       toast.error("圖片大小請勿超過 8MB");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = (e.target?.result as string).split(",")[1];
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx2d = canvas.getContext('2d');
+      if (!ctx2d) return;
+      ctx2d.drawImage(img, 0, 0);
+      // 統一轉 PNG（GPT Image 2 mask 模式要求 PNG）
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
       setOriginalImage(base64);
-      setOriginalMime(file.type);
+      setOriginalMime('image/png');
       setStep(1);
       setResultUrl(null);
       setSelectedPreset(null);
-      setCustomPrompt("");
+      setCustomPrompt('');
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      toast.error('圖片讀取失敗，請換一張試試');
+    };
+    img.src = objectUrl;
   }, []);
 
   const handleDrop = useCallback(
@@ -224,8 +238,8 @@ export default function ImageEditor() {
             {/* Tips */}
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { icon: "✦", title: "GPT Image 2 驅動", desc: "OpenAI 最新圖像模型，文字保留業界最強" },
-                { icon: "✦", title: "一步到位", desc: "不需去背、不需合成，原圖直送精修" },
+                { icon: "✦", title: "GPT Image 2 + Mask", desc: "Mask 鎖定產品，GPT 只改背景，精品包不走樣" },
+                { icon: "✦", title: "智能鎖定產品", desc: "自動去背生成 Mask，產品形狀 100% 不變形" },
                 { icon: "✦", title: "一鍵下載", desc: "高解析度 PNG，直接用於社群發佈" },
               ].map((tip) => (
                 <div key={tip.title} className="luxury-card rounded-sm p-5">
