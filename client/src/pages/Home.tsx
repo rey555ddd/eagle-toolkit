@@ -7,7 +7,7 @@
  * 原因：部署環境中 FM 的 animate prop 不觸發，所有 initial={{ opacity: 0 }} 元素永遠透明
  */
 import { Link } from "wouter";
-import { Film, PenTool, ImageIcon, ArrowRight, MessageSquarePlus, ShoppingBag, Radar as RadarIcon, Lock } from "lucide-react";
+import { Film, PenTool, ImageIcon, ArrowRight, MessageSquarePlus, ShoppingBag, Radar as RadarIcon, Lock, Package, LayoutDashboard } from "lucide-react";
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/hero_bg-f8gPGgUaC9gPWv74TECkzN.webp";
 const CARD_VIDEO = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/card_video-Jp9EhT8PgRp4ReP5jDKFky.webp";
@@ -54,6 +54,18 @@ const abbyTools = [
     desc: "掃描 Dcard / PTT / Threads 尋找潛在賣家，AI 生成個人化留言話術。",
     icon: RadarIcon,
     href: "/radar",
+  },
+  {
+    title: "庫存盤點",
+    desc: "管理精品庫存狀態，支援多條件篩選、型號庫查詢與銷售紀錄更新。",
+    icon: Package,
+    href: "/stock",
+  },
+  {
+    title: "數據儀表板",
+    desc: "庫存總覽、採購趨勢、品牌佔比與週轉速度，一頁掌握營運數據。",
+    icon: LayoutDashboard,
+    href: "/dashboard",
   },
 ];
 
@@ -282,8 +294,11 @@ export default function Home() {
           <p className="text-[10px] tracking-[0.12em] mb-4" style={{ color: "rgba(212,160,23,0.6)" }}>CHANGELOG</p>
           <div className="space-y-3">
             {[
+              { date: "2026-05-06", tag: "Fix", desc: "影片生成器下載修正：生成後正確下載 WebM 影片而非單張圖片" },
+              { date: "2026-05-06", tag: "New", desc: "首頁新增庫存盤點與數據儀表板入口" },
+              { date: "2026-05-04", tag: "New", desc: "圖片精修器加入 fal.ai Mask 模式，精品包換背景不走樣" },
+              { date: "2026-05-04", tag: "Fix", desc: "賣家雷達登入修正（LoginGate 改 useState + onLogin callback）" },
               { date: "2026-04-16", tag: "New", desc: "文案生成器升級 RefineBox，支援微調指令套用再生成" },
-              { date: "2026-04-16", tag: "New", desc: "新增 AI 回饋欄（採用 / 重做 / 存金庫）" },
               { date: "2026-04-14", tag: "Optimize", desc: "圖片生成三段 fallback：Imagen4 → gemini-2.5-flash-image → gemini-2.0-flash-lite" },
             ].map((item, i) => (
               <div key={i} className="flex items-start gap-3 text-[12px]">

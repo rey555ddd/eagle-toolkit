@@ -262,7 +262,19 @@ export default function VideoMaker() {
   };
 
   const handleDownload = () => {
-    // Generate a canvas-based video frame as demo
+    // If we have the actual recorded video blob, download it directly
+    if (videoBlob) {
+      const ext = videoBlob.type.includes("mp4") ? "mp4" : "webm";
+      const url = URL.createObjectURL(videoBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `eagle_video_${Date.now()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("影片已下載！");
+      return;
+    }
+    // Fallback: Generate a canvas-based single frame as PNG
     const canvas = document.createElement("canvas");
     const sizeMap: Record<string, [number, number]> = {
       "9:16": [1080, 1920],
@@ -330,7 +342,7 @@ export default function VideoMaker() {
             a.download = `eagle_video_${Date.now()}.png`;
             a.click();
             URL.revokeObjectURL(url);
-            toast.success("已下載預覽幀！");
+            toast.success("已下載影片幀！");
           }
         }, "image/png");
       };
@@ -880,7 +892,7 @@ export default function VideoMaker() {
                           className="w-full btn-luxury-filled py-4 rounded-sm text-sm tracking-[0.1em] flex items-center justify-center gap-2"
                         >
                           <Download size={16} />
-                          下載影片預覽幀
+                          下載影片
                         </button>
                         <button
                           onClick={() => { setPreviewReady(false); setGenerating(false); setProgress(0); }}
