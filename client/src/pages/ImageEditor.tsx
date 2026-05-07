@@ -17,16 +17,46 @@ import { trpc } from "@/lib/trpc";
 // ─── 場景預設 ────────────────────────────────────────────────────────────────
 
 const PRESETS = [
-  { id: "marble-white",      label: "白色大理石",   desc: "卡拉拉白大理石，金色紋路" },
-  { id: "marble-black",      label: "黑金大理石",   desc: "黑色大理石，金色脈絡" },
-  { id: "velvet-black",      label: "黑色絲絨",     desc: "深邃黑絲絨，珠寶首選" },
-  { id: "velvet-deep-blue",  label: "深藍絲絨",     desc: "皇家深藍，高貴典雅" },
-  { id: "gold-bokeh",        label: "金色光暈",     desc: "香檳金散景，夢幻奢華" },
-  { id: "champagne-silk",    label: "香檳絲綢",     desc: "流動絲綢，柔美精緻" },
-  { id: "dark-wood",         label: "深色胡桃木",   desc: "深色木紋，沉穩奢華" },
-  { id: "mirror-reflection", label: "鏡面反射",     desc: "光滑鏡面，倒影效果" },
-  { id: "rose-petal",        label: "玫瑰花瓣",     desc: "浪漫玫瑰，奢華氛圍" },
-  { id: "crystal-light",     label: "水晶光折射",   desc: "稜鏡彩光，珠寶質感" },
+  {
+    id: "marble-white", label: "白色大理石", desc: "卡拉拉白大理石，金色紋路",
+    thumb: "linear-gradient(150deg,#f7f4ed 0%,#e8e2d0 18%,#f2ece0 30%,#d6cdb8 42%,#f0eadc 58%,#e4dcc8 72%,#f8f4ea 100%)",
+  },
+  {
+    id: "marble-black", label: "黑金大理石", desc: "黑色大理石，金色脈絡",
+    thumb: "linear-gradient(140deg,#0e0e0e 0%,#1c1a14 20%,#c8a03a 28%,#0e0e0e 38%,#1e1c14 55%,#a87e20 65%,#0d0d0d 100%)",
+  },
+  {
+    id: "velvet-black", label: "黑色絲絨", desc: "深邃黑絲絨，珠寶首選",
+    thumb: "radial-gradient(ellipse at 40% 35%,#2a2420 0%,#161210 45%,#0a0808 100%)",
+  },
+  {
+    id: "velvet-deep-blue", label: "深藍絲絨", desc: "皇家深藍，高貴典雅",
+    thumb: "radial-gradient(ellipse at 40% 35%,#1a2050 0%,#0d1230 50%,#050810 100%)",
+  },
+  {
+    id: "gold-bokeh", label: "金色光暈", desc: "香檳金散景，夢幻奢華",
+    thumb: "radial-gradient(ellipse at 35% 40%,#f5d060 0%,#c49020 35%,#7a5800 65%,#3a2800 100%)",
+  },
+  {
+    id: "champagne-silk", label: "香檳絲綢", desc: "流動絲綢，柔美精緻",
+    thumb: "linear-gradient(160deg,#f5e8c4 0%,#edd8a0 25%,#f8f0da 50%,#e8d49a 70%,#f2e4ba 100%)",
+  },
+  {
+    id: "dark-wood", label: "深色胡桃木", desc: "深色木紋，沉穩奢華",
+    thumb: "repeating-linear-gradient(168deg,#2a160c 0px,#3c2018 6px,#4a2a1c 10px,#3a1e10 16px,#2e1810 22px)",
+  },
+  {
+    id: "mirror-reflection", label: "鏡面反射", desc: "光滑鏡面，倒影效果",
+    thumb: "linear-gradient(135deg,#c8c8c8 0%,#f0f0f0 20%,#a0a0a0 38%,#e4e4e4 55%,#b8b8b8 72%,#f4f4f4 100%)",
+  },
+  {
+    id: "rose-petal", label: "玫瑰花瓣", desc: "浪漫玫瑰，奢華氛圍",
+    thumb: "radial-gradient(ellipse at 50% 45%,#f0a0b4 0%,#d06080 35%,#903050 65%,#501828 100%)",
+  },
+  {
+    id: "crystal-light", label: "水晶光折射", desc: "稜鏡彩光，珠寶質感",
+    thumb: "linear-gradient(120deg,#e06060 0%,#e89040 18%,#d4cc40 36%,#60c860 54%,#5080e0 72%,#9050d0 100%)",
+  },
 ] as const;
 
 type PresetId = typeof PRESETS[number]["id"];
@@ -288,21 +318,32 @@ export default function ImageEditor() {
                       setSelectedPreset(p.id);
                       setCustomPrompt("");
                     }}
-                    className={`luxury-card rounded-sm p-4 text-left transition-all duration-300 ${
+                    className={`luxury-card rounded-sm overflow-hidden text-left transition-all duration-300 ${
                       isSelected
                         ? "border-[oklch(0.72_0.08_75)] bg-[oklch(0.72_0.08_75/8%)]"
                         : "hover:border-[oklch(0.72_0.08_75/30%)]"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-[oklch(0.82_0.01_80)] text-sm tracking-[0.05em]">
+                    {/* 縮圖預覽 */}
+                    <div
+                      className="w-full h-14 relative"
+                      style={{ background: p.thumb }}
+                    >
+                      {isSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                          <Check size={18} className="text-[oklch(0.72_0.08_75)] drop-shadow-lg" />
+                        </div>
+                      )}
+                    </div>
+                    {/* 文字 */}
+                    <div className="p-3">
+                      <h4 className="text-[oklch(0.82_0.01_80)] text-[12px] tracking-[0.05em] mb-0.5">
                         {p.label}
                       </h4>
-                      {isSelected && <Check size={14} className="text-[oklch(0.72_0.08_75)]" />}
+                      <p className="text-[oklch(0.45_0.02_60)] text-[10px] leading-snug">
+                        {p.desc}
+                      </p>
                     </div>
-                    <p className="text-[oklch(0.45_0.02_60)] text-[11px] leading-snug">
-                      {p.desc}
-                    </p>
                   </button>
                 );
               })}
