@@ -757,31 +757,47 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 
 // ─── Gemini API Helpers ───────────────────────────────────────────────────────
 
-const TEXT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite'];
+const CLAUDE_TEXT_MODEL = 'claude-sonnet-4-6';
 
 async function callGeminiText(
   env: Env,
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const genAI = getGeminiClient(env);
-  let lastError: unknown;
-  for (const modelName of TEXT_MODELS) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName, systemInstruction: systemPrompt });
-      const result = await model.generateContent(userPrompt);
-      return result.response.text();
-    } catch (err: unknown) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('503') || msg.includes('404') || msg.includes('overloaded') || msg.includes('high demand') || msg.includes('no longer available')) {
-        console.log(`Model ${modelName} overloaded, trying fallback...`);
-        continue;
-      }
-      throw err;
-    }
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured in Cloudflare Pages environment');
   }
-  throw lastError;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: CLAUDE_TEXT_MODEL,
+      max_tokens: 1600,
+      temperature: 0.75,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Claude API error (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json() as any;
+  const text = data?.content
+    ?.map((part: any) => part?.type === 'text' ? part.text : '')
+    .join('')
+    .trim();
+
+  if (!text) throw new Error('Claude did not return text content');
+  return text;
 }
 
 async function callGeminiVision(
