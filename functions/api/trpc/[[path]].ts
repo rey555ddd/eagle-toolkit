@@ -1258,13 +1258,9 @@ async function runRadarScan(env: Env): Promise<{ scraped: number; inserted: numb
   return { scraped: allRaw.length, inserted };
 }
 
-async function generateRadarReply(apiKey: string, title: string, content: string, brands: string[]): Promise<string> {
+async function generateRadarReply(env: Env, title: string, content: string, brands: string[]): Promise<string> {
   try {
-    const prompt = `你是台灣精品收購品牌「伊果國際」的客服，要在公開貼文底下留言邀請對方私訊報價。對方貼文如下：
-
-標題：${title}
-內容：${content}
-偵測品牌：${brands.join("、")}
+    const systemPrompt = `你是台灣精品收購品牌「伊果國際」的客服，要在公開貼文底下留言邀請對方私訊報價。
 
 請寫一則 40-60 字的留言：
 - 直接、親切，不要官腔
@@ -1278,17 +1274,13 @@ async function generateRadarReply(apiKey: string, title: string, content: string
 
 直接輸出留言，不要任何前言。`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    if (!response.ok) return "";
-    const data = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const prompt = `對方貼文如下：
+
+標題：${title}
+內容：${content}
+偵測品牌：${brands.join("、")}`;
+
+    return await callGeminiText(env, systemPrompt, prompt);
   } catch (e) {
     console.error("[radar] reply gen failed:", e);
     return "";
@@ -1415,7 +1407,7 @@ const radarRouter = router({
       if (row.ai_reply) return { reply: row.ai_reply };
 
       const brands = row.brand_tags ? (JSON.parse(row.brand_tags) as string[]) : [];
-      const reply = await generateRadarReply(ctx.env.GEMINI_API_KEY, row.title, row.content, brands);
+      const reply = await generateRadarReply(ctx.env, row.title, row.content, brands);
       if (reply) {
         await ctx.env.DB.prepare(`UPDATE radar_posts SET ai_reply = ? WHERE id = ?`).bind(reply, input.id).run();
       }
