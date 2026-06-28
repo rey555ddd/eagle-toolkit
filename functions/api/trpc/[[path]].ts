@@ -3136,6 +3136,43 @@ const migrateRouter = router({
         `CREATE INDEX IF NOT EXISTS idx_purchase_item_batch ON purchase_item(batchId)`,
         `CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory_item(status)`,
         `CREATE INDEX IF NOT EXISTS idx_bbang_brand_serial ON bbang_models(brand, serial)`,
+        `CREATE TABLE IF NOT EXISTS feedback (
+          id TEXT PRIMARY KEY,
+          output_id TEXT NOT NULL,
+          rating TEXT NOT NULL CHECK(rating IN ('up', 'down', 'gold')),
+          tool TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now'))
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_feedback_tool ON feedback(tool)`,
+        `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS gold_library (
+          id TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          tool TEXT NOT NULL,
+          tags TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_gold_tool ON gold_library(tool)`,
+        `CREATE TABLE IF NOT EXISTS radar_posts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source TEXT NOT NULL,
+          external_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT,
+          author TEXT,
+          brand_tags TEXT,
+          priority INTEGER NOT NULL DEFAULT 0,
+          ai_reply TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          handled_by TEXT,
+          handled_at INTEGER,
+          scraped_at INTEGER NOT NULL,
+          UNIQUE(source, external_id)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_radar_scraped ON radar_posts(scraped_at DESC)`,
+        `CREATE INDEX IF NOT EXISTS idx_radar_status ON radar_posts(status, scraped_at DESC)`,
+        `CREATE INDEX IF NOT EXISTS idx_radar_priority ON radar_posts(priority DESC, scraped_at DESC)`,
       ];
 
       const results: string[] = [];
