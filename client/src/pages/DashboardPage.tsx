@@ -1,6 +1,6 @@
 /**
  * 數據儀表板 /dashboard
- * Abby 專用 — 共用 eagle_abby_auth cookie（Abby888）
+ * Abby 專用
  * 功能：
  *   - 統計大卡（4 顆）：總商品 / 庫存價值 / 已售件數+金額 / 平均週轉天數
  *   - 採購趨勢（SVG 折線 + bar）：monthlyTrend 最近 6 月
@@ -9,13 +9,12 @@
  *   - 週轉天數小卡：avgTurnoverDays vs 業界 ~120 天
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   BarChart3, Package, TrendingUp, DollarSign, RefreshCw,
-  LogOut, Timer, ShoppingBag, AlertCircle,
+  Timer, ShoppingBag, AlertCircle,
 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
-import LoginGate from '@/components/LoginGate'
 import { Link } from 'wouter'
 
 // ─── 型別 ─────────────────────────────────────────────────────────────────────
@@ -669,35 +668,9 @@ function DashboardContent() {
   )
 }
 
-// ─── DashboardPage（AuthGate 包裝）────────────────────────────────────────────
+// ─── DashboardPage ───────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [authed, setAuthed] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    fetch('/api/abby-check', { credentials: 'include' })
-      .then(res => setAuthed(res.ok))
-      .catch(() => setAuthed(false))
-  }, [])
-
-  if (authed === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'oklch(0.1 0.005 60)' }}>
-        <RefreshCw size={20} className="animate-spin" style={{ color: 'oklch(0.55 0.02 60)' }} />
-      </div>
-    )
-  }
-
-  if (!authed) {
-    return (
-      <LoginGate
-        title="數據儀表板"
-        subtitle="蹦闆精品 · Abby 專用"
-        onLogin={() => setAuthed(true)}
-      />
-    )
-  }
-
   return (
     <div className="min-h-screen" style={{ background: 'oklch(0.1 0.005 60)' }}>
       {/* 副頁首工具列 */}
@@ -712,17 +685,6 @@ export default function DashboardPage() {
               數據儀表板
             </span>
           </div>
-          <button
-            onClick={async () => {
-              await fetch('/api/abby-logout', { method: 'POST', credentials: 'include' })
-              setAuthed(false)
-            }}
-            className="flex items-center gap-1.5 text-xs transition-all py-1 px-2 rounded"
-            style={{ color: 'oklch(0.5 0.02 60)' }}
-          >
-            <LogOut size={12} />
-            登出
-          </button>
         </div>
       </div>
 

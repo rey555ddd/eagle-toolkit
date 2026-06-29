@@ -5,7 +5,6 @@
  */
 import { useState } from "react";
 import { toast } from "sonner";
-import LoginGate from "@/components/LoginGate";
 import {
   Radar as RadarIcon,
   RefreshCw,
@@ -33,16 +32,6 @@ type EaglePost = {
 };
 
 export default function EagleRadarPage() {
-  const [authed, setAuthed] = useState(false);
-  if (!authed) {
-    return (
-      <LoginGate
-        title="賣家雷達"
-        subtitle="蹦闆精品 · Abby 專用"
-        onLogin={() => setAuthed(true)}
-      />
-    );
-  }
   return <EagleRadarContent />;
 }
 

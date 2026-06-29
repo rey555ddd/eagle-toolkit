@@ -8,7 +8,7 @@
  */
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { Menu, X, Lock, Package, BarChart3, ShoppingBag, Radar, ChevronDown } from "lucide-react";
+import { Menu, X, Package, BarChart3, ShoppingBag, Radar, ChevronDown } from "lucide-react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310419663032574653/TQrqsbkh3SJSTJxbPSvnyQ/eagle_logo_bfca0274.jpeg";
 
@@ -20,7 +20,7 @@ const publicNavItems = [
   { href: "/image", label: "圖片處理器" },
 ];
 
-// 店長專屬（Abby888 鎖、合併 4 件成一個下拉）
+// 店長專屬（合併 4 件成一個下拉）
 const storeManagerItems: { href: string; label: string; icon: React.ComponentType<{ size?: number }> | null }[] = [
   { href: "/purchase", label: "採購助手", icon: ShoppingBag },
   { href: "/stock", label: "庫存盤點", icon: Package },
@@ -121,7 +121,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       : "text-[oklch(0.7_0.01_80)] hover:text-[oklch(0.72_0.08_75)]"
                   }`}
                 >
-                  <Lock size={10} className="opacity-50" />
                   店長專屬
                   <ChevronDown size={12} className={`transition-transform duration-200 ${storeMenuOpen ? "rotate-180" : ""}`} />
                   {isStoreActive && (
@@ -219,7 +218,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 style={{ color: isStoreActive ? "oklch(0.72 0.08 75)" : "oklch(0.7 0.01 80)" }}
               >
                 <span className="flex items-center gap-2">
-                  <Lock size={11} className="opacity-50" />
                   店長專屬
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.2)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.35)" }}>
                     Abby 專用

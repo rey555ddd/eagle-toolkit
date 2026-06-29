@@ -1,6 +1,6 @@
 /**
  * 庫存盤點 /stock
- * Abby 專用 — 共用 eagle_abby_auth cookie（Abby888）
+ * Abby 專用
  * 功能：
  *   - 9 欄庫存表格（縮圖/品牌/型號/商品名稱/顏色/進貨價/售價/狀態/操作）
  *   - 篩選列：狀態 5 chip + 品牌 dropdown + 型號搜尋
@@ -12,11 +12,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
-  Package, RefreshCw, LogOut, ChevronDown, ChevronLeft, ChevronRight,
+  Package, RefreshCw, ChevronDown, ChevronLeft, ChevronRight,
   Search, X, Library, DollarSign,
 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
-import LoginGate from '@/components/LoginGate'
 
 // ─── 常數 ─────────────────────────────────────────────────────────────────────
 
@@ -595,7 +594,7 @@ function InventoryTable({ items, onStatusChange, onAddToModelDb, isLoading }: In
 
 // ─── StockDashboard ────────────────────────────────────────────────────────────
 
-function StockDashboard({ onLogout }: { onLogout: () => void }) {
+function StockDashboard() {
   const [statusFilter, setStatusFilter] = useState<InventoryStatus | 'all'>('all')
   const [brandFilter, setBrandFilter] = useState<Brand>('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -713,17 +712,6 @@ function StockDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
 
-          <button
-            onClick={async () => {
-              await fetch('/api/abby-logout', { method: 'POST', credentials: 'include' }).catch(() => {})
-              onLogout()
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)', color: 'oklch(0.6 0.02 60)' }}
-          >
-            <LogOut size={13} />
-            <span className="hidden sm:inline">登出</span>
-          </button>
         </div>
       </header>
 
@@ -883,34 +871,8 @@ function StockDashboard({ onLogout }: { onLogout: () => void }) {
   )
 }
 
-// ─── StockPage（AuthGate 包裝）────────────────────────────────────────────────
+// ─── StockPage ───────────────────────────────────────────────────────────────
 
 export default function StockPage() {
-  const [authed, setAuthed] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    fetch('/api/abby-check', { credentials: 'include' })
-      .then(res => setAuthed(res.ok))
-      .catch(() => setAuthed(false))
-  }, [])
-
-  if (authed === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'oklch(0.1 0.005 60)' }}>
-        <RefreshCw size={20} className="animate-spin" style={{ color: 'oklch(0.55 0.02 60)' }} />
-      </div>
-    )
-  }
-
-  if (!authed) {
-    return (
-      <LoginGate
-        title="庫存盤點"
-        subtitle="蹦闆精品 · Abby 專用"
-        onLogin={() => setAuthed(true)}
-      />
-    )
-  }
-
-  return <StockDashboard onLogout={() => setAuthed(false)} />
+  return <StockDashboard />
 }

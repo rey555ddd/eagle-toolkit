@@ -1,13 +1,12 @@
 /**
  * 採購助手 /purchase
- * Abby 專用 — 要密碼才能進
- * - 密碼驗證：cookie based（/api/abby-login、/api/abby-check、/api/abby-logout）
+ * Abby 專用
  * - 拖拉上傳 → 批次辨識 → 結果表格（含價格欄）→ 信心度警示
  */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
-  ScanLine, Trash2, RefreshCw, Save, DollarSign, LogOut,
+  ScanLine, Trash2, RefreshCw, Save, DollarSign,
   ShoppingBag, ArrowUpDown,
 } from 'lucide-react'
 import { useDropzone } from '@/hooks/useDropzone'
@@ -15,49 +14,16 @@ import { useRecognize } from '@/hooks/useRecognize'
 import { DropZone } from '@/components/DropZone'
 import { PurchaseProgressBar } from '@/components/PurchaseProgressBar'
 import { PurchaseResultTable } from '@/components/PurchaseResultTable'
-import LoginGate from '@/components/LoginGate'
-
-// ─── AuthGuard ───────────────────────────────────────────────────────────────
 
 export default function PurchasePage() {
-  const [authed, setAuthed] = useState<boolean | null>(null) // null = 檢查中
-
-  useEffect(() => {
-    fetch('/api/abby-check', { credentials: 'include' })
-      .then(res => setAuthed(res.ok))
-      .catch(() => setAuthed(false))
-  }, [])
-
-  if (authed === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'oklch(0.1 0.005 60)' }}>
-        <RefreshCw size={20} className="animate-spin" style={{ color: 'oklch(0.55 0.02 60)' }} />
-      </div>
-    )
-  }
-
-  if (!authed) {
-    return (
-      <LoginGate
-        title="採購辨識助手"
-        subtitle="蹦闆精品 · Abby 專用"
-        onLogin={() => setAuthed(true)}
-      />
-    )
-  }
-
-  return (
-    <PurchaseDashboard
-      onLogout={() => setAuthed(false)}
-    />
-  )
+  return <PurchaseDashboard />
 }
 
 // ─── 主儀表板 ─────────────────────────────────────────────────────────────────
 
 type SortKey = 'none' | 'brand' | 'arrivalDate' | 'color' | 'size'
 
-function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
+function PurchaseDashboard() {
   const dropzone = useDropzone()
   const { results, isRecognizing, progress, totalCostLog, recognize, updateResult, clearResults } = useRecognize()
   const [sortBy, setSortBy] = useState<SortKey>('none')
@@ -143,17 +109,6 @@ function PurchaseDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
 
-          <button
-            onClick={async () => {
-              await fetch('/api/abby-logout', { method: 'POST', credentials: 'include' }).catch(() => {})
-              onLogout()
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{ background: 'oklch(0.18 0.005 60)', border: '1px solid oklch(0.25 0.01 65 / 50%)', color: 'oklch(0.6 0.02 60)' }}
-          >
-            <LogOut size={13} />
-            <span className="hidden sm:inline">登出</span>
-          </button>
         </div>
       </header>
 
